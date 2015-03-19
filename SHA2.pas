@@ -283,7 +283,7 @@ Function SHA2_Hash(HashSize: TSHA2HashSize; const Buffer; Size: TSize): TSHA2Has
 implementation
 
 uses
-  SysUtils, Math, StrUtils;
+  SysUtils, Math;
 
 const
   BlockSize_32    = 64;                             // 512 bits
@@ -564,20 +564,20 @@ end;
 
 Function SHA2ToStr_32(Hash: TSHA2Hash_32; Bits: Integer): String;
 begin
-Result := AnsiLeftStr(IntToHex(Hash.PartA,8) + IntToHex(Hash.PartB,8) +
+Result := Copy(IntToHex(Hash.PartA,8) + IntToHex(Hash.PartB,8) +
             IntToHex(Hash.PartC,8) + IntToHex(Hash.PartD,8) +
             IntToHex(Hash.PartE,8) + IntToHex(Hash.PartF,8) +
-            IntToHex(Hash.PartG,8) + IntToHex(Hash.PartH,8),Bits shr 2);
+            IntToHex(Hash.PartG,8) + IntToHex(Hash.PartH,8),1,Bits shr 2);
 end;
 
 //------------------------------------------------------------------------------
 
 Function SHA2ToStr_64(Hash: TSHA2Hash_64; Bits: Integer): String;
 begin
-Result := AnsiLeftStr(IntToHex(Hash.PartA,16) + IntToHex(Hash.PartB,16) +
+Result := Copy(IntToHex(Hash.PartA,16) + IntToHex(Hash.PartB,16) +
             IntToHex(Hash.PartC,16) + IntToHex(Hash.PartD,16) +
             IntToHex(Hash.PartE,16) + IntToHex(Hash.PartF,16) +
-            IntToHex(Hash.PartG,16) + IntToHex(Hash.PartH,16),Bits shr 2);
+            IntToHex(Hash.PartG,16) + IntToHex(Hash.PartH,16),1,Bits shr 2);
 end;
 
 //------------------------------------------------------------------------------
