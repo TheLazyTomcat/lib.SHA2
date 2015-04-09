@@ -408,20 +408,54 @@ end;
 
 //------------------------------------------------------------------------------
 
-{$If Defined(PurePascal) or not Defined(x64)}
-  {$DEFINE no32ASM}
-{$IFEND}
-
-Function RightRotate(Value: QuadWord; Shift: Integer): QuadWord;{$IFNDEF no32ASM}assembler;{$ENDIF} overload;
-{$IFDEF no32ASM}
+Function RightRotate(Value: QuadWord; Shift: Integer): QuadWord;{$IFNDEF PurePascal}assembler;{$ENDIF} overload;
+{$IFDEF PurePascal}
 begin
-  Result := (Value shr Shift) or (Value shl (64 - Shift));
+Shift := Shift and $3F;
+Result := (Value shr Shift) or (Value shl (64 - Shift));
 end;
 {$ELSE}
 asm
-  MOV   RAX, RCX
-  MOV   CL,  DL
-  ROR   RAX, CL
+{$IFDEF x64}
+    MOV   RAX,  RCX
+    MOV   CL,   DL
+    ROR   RAX,  CL
+{$ELSE}
+    MOV   ECX,  EAX
+    AND   ECX,  $3F
+    CMP   ECX,  32
+
+    JAE   @Above31
+
+  @Below32:
+    MOV   EAX,  dword ptr [Value]
+    MOV   EDX,  dword ptr [Value + 4]
+    CMP   ECX,  0
+    JE    @FuncEnd
+
+    MOV   dword ptr [Value],  EDX
+    JMP   @Rotate
+
+  @Above31:
+    MOV   EDX,  dword ptr [Value]
+    MOV   EAX,  dword ptr [Value + 4]
+    JE    @FuncEnd
+
+    AND   ECX,  $1F
+
+  @Rotate:
+    SHRD  EDX,  EAX, CL
+    SHR   EAX,  CL
+    PUSH  EAX
+    MOV   EAX,  dword ptr [Value]
+    XOR   CL,   31
+    INC   CL
+    SHL   EAX,  CL
+    POP   ECX
+    OR    EAX,  ECX
+
+  @FuncEnd:
+{$ENDIF}
 end;
 {$ENDIF}
 
