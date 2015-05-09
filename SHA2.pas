@@ -9,9 +9,9 @@
 
   SHA2 Hash Calculation
 
-  ©František Milt 2015-03-19
+  ©František Milt 2015-05-07
 
-  Version 1.0
+  Version 1.0.1
 
   Following hash sizes are supported in current implementation:
     SHA-224
@@ -26,6 +26,10 @@ unit SHA2;
 
 {$DEFINE LargeBuffer}
 {.$DEFINE UseStringStream}
+
+{$IFOPT Q+}
+  {$DEFINE OverflowCheck}
+{$ENDIF}
 
 interface
 
@@ -42,12 +46,16 @@ type
   QuadWord = UInt64;
 {$IFEND}
 {$ENDIF}
+  PQuadWord = ^QuadWord;
 
 {$IFDEF x64}
-  TSize = UInt64;
+  PtrUInt = UInt64;
 {$ELSE}
-  TSize = LongWord;
+  PtrUInt = LongWord;
 {$ENDIF}
+
+  TSize = PtrUInt;
+
 
   TOctaWord = record
     case Integer of
@@ -329,7 +337,9 @@ const
 
 type
   TBlockBuffer_32 = Array[0..BlockSize_32 - 1] of Byte;
+  PBlockBuffer_32 = ^TBlockBuffer_32;
   TBlockBuffer_64 = Array[0..BlockSize_64 - 1] of Byte;
+  PBlockBuffer_64 = ^TBlockBuffer_64;
 
   TSHA2Context_Internal = record
     MessageHash:      TSHA2Hash;
@@ -347,15 +357,15 @@ type
 Function EndianSwap(Value: LongWord): LongWord;{$IFNDEF PurePascal}assembler;{$ENDIF} overload;
 {$IFDEF PurePascal}
 begin
-Result := (Value and $000000FF shl 24) or (Value and $0000FF00 shl 8) or
-          (Value and $00FF0000 shr 8) or (Value and $FF000000 shr 24);
+Result := LongWord((Value and $000000FF shl 24) or (Value and $0000FF00 shl 8) or
+                   (Value and $00FF0000 shr 8) or (Value and $FF000000 shr 24));
 end;
 {$ELSE}
 asm
 {$IFDEF x64}
-  MOV     RAX, RCX
+    MOV   RAX,  RCX
 {$ENDIF}
-  BSWAP   EAX
+    BSWAP EAX
 end;
 {$ENDIF}
       
@@ -370,13 +380,13 @@ end;
 {$ELSE}
 asm
 {$IFDEF x64}
-  MOV     RAX, RCX
-  BSWAP   RAX
+    MOV   RAX,  RCX
+    BSWAP RAX
 {$ELSE}
-  MOV     EAX, dword ptr [Value + 4]
-  MOV     EDX, dword ptr [Value]
-  BSWAP   EAX
-  BSWAP   EDX
+    MOV   EAX,  dword ptr [Value + 4]
+    MOV   EDX,  dword ptr [Value]
+    BSWAP EAX
+    BSWAP EDX
 {$ENDIF}
 end;
 {$ENDIF}
@@ -391,28 +401,29 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function RightRotate(Value: LongWord; Shift: Integer): LongWord;{$IFNDEF PurePascal}assembler;{$ENDIF} overload;
+Function RightRotate(Value: LongWord; Shift: Byte): LongWord;{$IFNDEF PurePascal}assembler;{$ENDIF} overload;
 {$IFDEF PurePascal}
 begin
-  Result := (Value shr Shift) or (Value shl (32 - Shift));
+Shift := Shift and $1F;
+Result := LongWord((Value shr Shift) or (Value shl (32 - Shift)));
 end;
 {$ELSE}
 asm
 {$IFDEF x64}
-  MOV   EAX, ECX
+    MOV   EAX,  ECX
 {$ENDIF}
-  MOV   CL,  DL
-  ROR   EAX, CL
+    MOV   CL,   DL
+    ROR   EAX,  CL
 end;
 {$ENDIF}
 
 //------------------------------------------------------------------------------
 
-Function RightRotate(Value: QuadWord; Shift: Integer): QuadWord;{$IFNDEF PurePascal}assembler;{$ENDIF} overload;
+Function RightRotate(Value: QuadWord; Shift: Byte): QuadWord;{$IFNDEF PurePascal}assembler;{$ENDIF} overload;
 {$IFDEF PurePascal}
 begin
 Shift := Shift and $3F;
-Result := (Value shr Shift) or (Value shl (64 - Shift));
+Result := QuadWord((Value shr Shift) or (Value shl (64 - Shift)));
 end;
 {$ELSE}
 asm
@@ -463,8 +474,8 @@ end;
 
 Function SizeToMessageLength(Size: QuadWord): OctaWord; overload;
 begin
-Result.Hi := Size shr 61;
-Result.Lo := Size shl 3;
+Result.Hi := QuadWord(Size shr 61);
+Result.Lo := QuadWord(Size shl 3);
 end;
 
 //------------------------------------------------------------------------------
@@ -495,32 +506,34 @@ var
 begin
 Result := Hash;
 For i := 0 to 15 do Schedule[i] := EndianSwap(BlockWords[i]);
+{$IFDEF OverflowCheck}{$Q-}{$ENDIF}
 For i := 16 to 63 do
-  Schedule[i] := Schedule[i - 16] + (RightRotate(Schedule[i - 15],7) xor RightRotate(Schedule[i - 15],18) xor (Schedule[i - 15] shr 3)) +
-                 Schedule[i - 7] + (RightRotate(Schedule[i - 2],17) xor RightRotate(Schedule[i - 2],19) xor (Schedule[i - 2] shr 10));
+  Schedule[i] := LongWord(Schedule[i - 16] + (RightRotate(Schedule[i - 15],7) xor RightRotate(Schedule[i - 15],18) xor (Schedule[i - 15] shr 3)) +
+                          Schedule[i - 7] + (RightRotate(Schedule[i - 2],17) xor RightRotate(Schedule[i - 2],19) xor (Schedule[i - 2] shr 10)));
 For i := 0 to 63 do
   begin
-    Temp1 := Hash.PartH + (RightRotate(Hash.PartE,6) xor RightRotate(Hash.PartE,11) xor RightRotate(Hash.PartE,25)) +
-             ((Hash.PartE and Hash.PartF) xor ((not Hash.PartE) and Hash.PartG)) + RoundConsts_32[i] + Schedule[i];
-    Temp2 := (RightRotate(Hash.PartA,2) xor RightRotate(Hash.PartA,13) xor RightRotate(Hash.PartA,22)) +
-             ((Hash.PartA and Hash.PartB) xor (Hash.PartA and Hash.PartC) xor (Hash.PartB and Hash.PartC));
+    Temp1 := LongWord(Hash.PartH + (RightRotate(Hash.PartE,6) xor RightRotate(Hash.PartE,11) xor RightRotate(Hash.PartE,25)) +
+                      ((Hash.PartE and Hash.PartF) xor ((not Hash.PartE) and Hash.PartG)) + RoundConsts_32[i] + Schedule[i]);
+    Temp2 := LongWord((RightRotate(Hash.PartA,2) xor RightRotate(Hash.PartA,13) xor RightRotate(Hash.PartA,22)) +
+                      ((Hash.PartA and Hash.PartB) xor (Hash.PartA and Hash.PartC) xor (Hash.PartB and Hash.PartC)));
     Hash.PartH := Hash.PartG;
     Hash.PartG := Hash.PartF;
     Hash.PartF := Hash.PartE;
-    Hash.PartE := Hash.PartD + Temp1;
+    Hash.PartE := LongWord(Hash.PartD + Temp1);
     Hash.PartD := Hash.PartC;
     Hash.PartC := Hash.PartB;
     Hash.PartB := Hash.PartA;
-    Hash.PartA := Temp1 + Temp2;
+    Hash.PartA := LongWord(Temp1 + Temp2);
   end;
-Inc(Result.PartA,Hash.PartA);
-Inc(Result.PartB,Hash.PartB);
-Inc(Result.PartC,Hash.PartC);
-Inc(Result.PartD,Hash.PartD);
-Inc(Result.PartE,Hash.PartE);
-Inc(Result.PartF,Hash.PartF);
-Inc(Result.PartG,Hash.PartG);
-Inc(Result.PartH,Hash.PartH);
+Result.PartA := LongWord(Result.PartA + Hash.PartA);
+Result.PartB := LongWord(Result.PartB + Hash.PartB);
+Result.PartC := LongWord(Result.PartC + Hash.PartC);
+Result.PartD := LongWord(Result.PartD + Hash.PartD);
+Result.PartE := LongWord(Result.PartE + Hash.PartE);
+Result.PartF := LongWord(Result.PartF + Hash.PartF);
+Result.PartG := LongWord(Result.PartG + Hash.PartG);
+Result.PartH := LongWord(Result.PartH + Hash.PartH);
+{$IFDEF OverflowCheck}{$Q+}{$ENDIF}
 end;
 
 //------------------------------------------------------------------------------
@@ -534,32 +547,34 @@ var
 begin
 Result := Hash;
 For i := 0 to 15 do Schedule[i] := EndianSwap(BlockWords[i]);
+{$IFDEF OverflowCheck}{$Q-}{$ENDIF}
 For i := 16 to 79 do
-  Schedule[i] := Schedule[i - 16] + (RightRotate(Schedule[i - 15],1) xor RightRotate(Schedule[i - 15],8) xor (Schedule[i - 15] shr 7)) +
-                 Schedule[i - 7] + (RightRotate(Schedule[i - 2],19) xor RightRotate(Schedule[i - 2],61) xor (Schedule[i - 2] shr 6));
+  Schedule[i] := QuadWord(Schedule[i - 16] + (RightRotate(Schedule[i - 15],1) xor RightRotate(Schedule[i - 15],8) xor (Schedule[i - 15] shr 7)) +
+                          Schedule[i - 7] + (RightRotate(Schedule[i - 2],19) xor RightRotate(Schedule[i - 2],61) xor (Schedule[i - 2] shr 6)));
 For i := 0 to 79 do
   begin
-    Temp1 := Hash.PartH + (RightRotate(Hash.PartE,14) xor RightRotate(Hash.PartE,18) xor RightRotate(Hash.PartE,41)) +
-             ((Hash.PartE and Hash.PartF) xor ((not Hash.PartE) and Hash.PartG)) + RoundConsts_64[i] + Schedule[i];
-    Temp2 := (RightRotate(Hash.PartA,28) xor RightRotate(Hash.PartA,34) xor RightRotate(Hash.PartA,39)) +
-             ((Hash.PartA and Hash.PartB) xor (Hash.PartA and Hash.PartC) xor (Hash.PartB and Hash.PartC));
+    Temp1 := QuadWord(Hash.PartH + (RightRotate(Hash.PartE,14) xor RightRotate(Hash.PartE,18) xor RightRotate(Hash.PartE,41)) +
+                      ((Hash.PartE and Hash.PartF) xor ((not Hash.PartE) and Hash.PartG)) + RoundConsts_64[i] + Schedule[i]);
+    Temp2 := QuadWord((RightRotate(Hash.PartA,28) xor RightRotate(Hash.PartA,34) xor RightRotate(Hash.PartA,39)) +
+                      ((Hash.PartA and Hash.PartB) xor (Hash.PartA and Hash.PartC) xor (Hash.PartB and Hash.PartC)));
     Hash.PartH := Hash.PartG;
     Hash.PartG := Hash.PartF;
     Hash.PartF := Hash.PartE;
-    Hash.PartE := Hash.PartD + Temp1;
+    Hash.PartE := QuadWord(Hash.PartD + Temp1);
     Hash.PartD := Hash.PartC;
     Hash.PartC := Hash.PartB;
     Hash.PartB := Hash.PartA;
-    Hash.PartA := Temp1 + Temp2;
+    Hash.PartA := QuadWord(Temp1 + Temp2);
   end;
-Inc(Result.PartA,Hash.PartA);
-Inc(Result.PartB,Hash.PartB);
-Inc(Result.PartC,Hash.PartC);
-Inc(Result.PartD,Hash.PartD);
-Inc(Result.PartE,Hash.PartE);
-Inc(Result.PartF,Hash.PartF);
-Inc(Result.PartG,Hash.PartG);
-Inc(Result.PartH,Hash.PartH);
+Result.PartA := QuadWord(Result.PartA + Hash.PartA);
+Result.PartB := QuadWord(Result.PartB + Hash.PartB);
+Result.PartC := QuadWord(Result.PartC + Hash.PartC);
+Result.PartD := QuadWord(Result.PartD + Hash.PartD);
+Result.PartE := QuadWord(Result.PartE + Hash.PartE);
+Result.PartF := QuadWord(Result.PartF + Hash.PartF);
+Result.PartG := QuadWord(Result.PartG + Hash.PartG);
+Result.PartH := QuadWord(Result.PartH + Hash.PartH);
+{$IFDEF OverflowCheck}{$Q+}{$ENDIF}
 end;
 
 //==============================================================================
@@ -995,33 +1010,45 @@ end;
 //==============================================================================
 
 procedure BufferSHA2_32(var Hash: TSHA2Hash_32; const Buffer; Size: TSize);
-type
-  TBlocksArray = Array[0..0] of TBlockBuffer_32;
 var
-  i:  Integer;
+  i:    TSize;
+  Buff: PBlockBuffer_32;
 begin
-If (Size mod BlockSize_32) = 0 then
+If Size > 0 then
   begin
-    For i := 0 to Pred(Size div BlockSize_32) do
-      Hash := BlockHash_32(Hash,TBlocksArray(Buffer)[i]);
-  end
-else raise Exception.CreateFmt('BufferSHA2_32: Buffer size is not divisible by %d.',[BlockSize_32]);
+    If (Size mod BlockSize_32) = 0 then
+      begin
+        Buff := @Buffer;
+        For i := 0 to Pred(Size div BlockSize_32) do
+          begin
+            Hash := BlockHash_32(Hash,Buff^);
+            Inc(Buff);
+          end;
+      end
+    else raise Exception.CreateFmt('BufferSHA2_32: Buffer size is not divisible by %d.',[BlockSize_32]);
+  end;
 end;
 
 //------------------------------------------------------------------------------
 
 procedure BufferSHA2_64(var Hash: TSHA2Hash_64; const Buffer; Size: TSize);
-type
-  TBlocksArray = Array[0..0] of TBlockBuffer_64;
 var
-  i:  Integer;
+  i:    TSize;
+  Buff: PBlockBuffer_64;
 begin
-If (Size mod BlockSize_64) = 0 then
+If Size > 0 then
   begin
-    For i := 0 to Pred(Size div BlockSize_64) do
-      Hash := BlockHash_64(Hash,TBlocksArray(Buffer)[i]);
-  end
-else raise Exception.CreateFmt('BufferSHA2_64: Buffer size is not divisible by %d.',[BlockSize_32]);
+    If (Size mod BlockSize_64) = 0 then
+      begin
+        Buff := @Buffer;
+        For i := 0 to Pred(Size div BlockSize_64) do
+          begin
+            Hash := BlockHash_64(Hash,Buff^);
+            Inc(Buff);
+          end;
+      end
+    else raise Exception.CreateFmt('BufferSHA2_64: Buffer size is not divisible by %d.',[BlockSize_32]);
+  end;
 end;
 
 //------------------------------------------------------------------------------
@@ -1085,24 +1112,30 @@ end;
 //==============================================================================
 
 Function LastBufferSHA2_32(Hash: TSHA2Hash_32; const Buffer; Size: TSize; MessageLength: QuadWord): TSHA2Hash_32;
-type
-  TQuadWords = Array[0..0] of QuadWord;
 var
-  FullBlocks:     Integer;
-  LastBlockSize:  Integer;
-  HelpBlocks:     Integer;
+  FullBlocks:     TSize;
+  LastBlockSize:  TSize;
+  HelpBlocks:     TSize;
   HelpBlocksBuff: Pointer;
 begin
 Result := Hash;
 FullBlocks := Size div BlockSize_32;
 If FullBlocks > 0 then BufferSHA2_32(Result,Buffer,FullBlocks * BlockSize_32);
-LastBlockSize := Size - TSize(FullBlocks * BlockSize_32);
+{$IFDEF x64}
+LastBlockSize := Size - (FullBlocks * BlockSize_32);
+{$ELSE}
+LastBlockSize := Size - (Int64(FullBlocks) * BlockSize_32);
+{$ENDIF}
 HelpBlocks := Ceil((LastBlockSize + SizeOf(QuadWord) + 1) / BlockSize_32);
 HelpBlocksBuff := AllocMem(HelpBlocks * BlockSize_32);
 try
-  Move(TByteArray(Buffer)[FullBlocks * BlockSize_32],HelpBlocksBuff^,LastBlockSize);
-  TByteArray(HelpBlocksBuff^)[LastBlockSize] := $80;
-  TQuadWords(HelpBlocksBuff^)[HelpBlocks * (BlockSize_32 div SizeOf(QuadWord)) - 1] := EndianSwap(MessageLength);
+  Move({%H-}Pointer(PtrUInt(@Buffer) + (FullBlocks * BlockSize_32))^,HelpBlocksBuff^,LastBlockSize);
+  {%H-}PByte(PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
+  {$IFDEF x64}
+  {%H-}PQuadWord(PtrUInt(HelpBlocksBuff) + (HelpBlocks * BlockSize_32) - SizeOf(QuadWord))^ := EndianSwap(MessageLength);
+  {$ELSE}
+  {%H-}PQuadWord(PtrUInt(HelpBlocksBuff) + (Int64(HelpBlocks) * BlockSize_32) - SizeOf(QuadWord))^ := EndianSwap(MessageLength);
+  {$ENDIF}
   BufferSHA2_32(Result,HelpBlocksBuff^,HelpBlocks * BlockSize_32);
 finally
   FreeMem(HelpBlocksBuff,HelpBlocks * BlockSize_32);
@@ -1112,24 +1145,30 @@ end;
 //------------------------------------------------------------------------------
 
 Function LastBufferSHA2_64(Hash: TSHA2Hash_64; const Buffer; Size: TSize; MessageLength: OctaWord): TSHA2Hash_64;
-type
-  TOctaWords = Array[0..0] of OctaWord;
 var
-  FullBlocks:     Integer;
-  LastBlockSize:  Integer;
-  HelpBlocks:     Integer;
+  FullBlocks:     TSize;
+  LastBlockSize:  TSize;
+  HelpBlocks:     TSize;
   HelpBlocksBuff: Pointer;
 begin
 Result := Hash;
 FullBlocks := Size div BlockSize_64;
 If FullBlocks > 0 then BufferSHA2_64(Result,Buffer,FullBlocks * BlockSize_64);
-LastBlockSize := Size - TSize(FullBlocks * BlockSize_64);
+{$IFDEF x64}
+LastBlockSize := Size - (FullBlocks * BlockSize_64);
+{$ELSE}
+LastBlockSize := Size - (Int64(FullBlocks) * BlockSize_64);
+{$ENDIF}
 HelpBlocks := Ceil((LastBlockSize + SizeOf(OctaWord) + 1) / BlockSize_64);
 HelpBlocksBuff := AllocMem(HelpBlocks * BlockSize_64);
 try
-  Move(TByteArray(Buffer)[FullBlocks * BlockSize_64],HelpBlocksBuff^,LastBlockSize);
-  TByteArray(HelpBlocksBuff^)[LastBlockSize] := $80;
-  TOctaWords(HelpBlocksBuff^)[HelpBlocks * (BlockSize_64 div SizeOf(OctaWord)) - 1] := EndianSwap(MessageLength);
+  Move({%H-}Pointer(PtrUInt(@Buffer) + (FullBlocks * BlockSize_64))^,HelpBlocksBuff^,LastBlockSize);
+  {%H-}PByte(PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
+  {$IFDEF x64}
+  {%H-}POctaWord(PtrUInt(HelpBlocksBuff) + (HelpBlocks * BlockSize_64) - SizeOf(OctaWord))^ := EndianSwap(MessageLength);
+  {$ELSE}
+  {%H-}POctaWord(PtrUInt(HelpBlocksBuff) + (Int64(HelpBlocks) * BlockSize_64) - SizeOf(OctaWord))^ := EndianSwap(MessageLength);
+  {$ENDIF}
   BufferSHA2_64(Result,HelpBlocksBuff^,HelpBlocks * BlockSize_64);
 finally
   FreeMem(HelpBlocksBuff,HelpBlocks * BlockSize_64);
@@ -1289,14 +1328,14 @@ end;
 
 Function LastBufferSHA2(Hash: TSHA2Hash_224; const Buffer; Size: TSize): TSHA2Hash_224;
 begin
-Result := TSHA2Hash_224(LastBufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size,QuadWord(Size) shl 3));
+Result := TSHA2Hash_224(LastBufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size,QuadWord(Size shl 3)));
 end;
 
 //------------------------------------------------------------------------------
 
 Function LastBufferSHA2(Hash: TSHA2Hash_256; const Buffer; Size: TSize): TSHA2Hash_256;
 begin
-Result := TSHA2Hash_256(LastBufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size,QuadWord(Size) shl 3));
+Result := TSHA2Hash_256(LastBufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size,QuadWord(Size shl 3)));
 end;
 
 //------------------------------------------------------------------------------
@@ -1516,7 +1555,7 @@ end;
 
 procedure SHA2_Update(Context: TSHA2Context; const Buffer; Size: TSize);
 var
-  FullChunks:     LongWord;
+  FullBlocks:     TSize;
   RemainingSize:  TSize;
 begin
 with PSHA2Context_Internal(Context)^ do
@@ -1530,7 +1569,7 @@ with PSHA2Context_Internal(Context)^ do
             BufferSHA2(MessageHash,TransferBuffer,ActiveBlockSize);
             RemainingSize := Size - (ActiveBlockSize - TransferSize);
             TransferSize := 0;
-            SHA2_Update(Context,TByteArray(Buffer)[Size - RemainingSize],RemainingSize);
+            SHA2_Update(Context,{%H-}Pointer(PtrUInt(@Buffer) + (Size - RemainingSize))^,RemainingSize)
           end
         else
           begin
@@ -1542,12 +1581,16 @@ with PSHA2Context_Internal(Context)^ do
     else
       begin
         IncOW(MessageLength,SizeToMessageLength(Size));
-        FullChunks := Size div ActiveBlockSize;
-        BufferSHA2(MessageHash,Buffer,FullChunks * ActiveBlockSize);
-        If TSize(FullChunks * ActiveBlockSize) < Size then
+        FullBlocks := Size div ActiveBlockSize;
+        BufferSHA2(MessageHash,Buffer,FullBlocks * ActiveBlockSize);
+        If (FullBlocks * ActiveBlockSize) < Size then
           begin
-            TransferSize := Size - TSize(FullChunks * QuadWord(ActiveBlockSize));
-            Move(TByteArray(Buffer)[Size - TransferSize],TransferBuffer,TransferSize);
+            {$IFDEF x64}
+            TransferSize := Size - (FullBlocks * ActiveBlockSize);
+            {$ELSE}
+            TransferSize := Size - (Int64(FullBlocks) * ActiveBlockSize);
+            {$ENDIF}
+            Move({%H-}Pointer(PtrUInt(@Buffer) + (Size - TransferSize))^,TransferBuffer,TransferSize);
           end;
       end;
   end;
