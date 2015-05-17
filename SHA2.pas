@@ -1129,12 +1129,12 @@ LastBlockSize := Size - (Int64(FullBlocks) * BlockSize_32);
 HelpBlocks := Ceil((LastBlockSize + SizeOf(QuadWord) + 1) / BlockSize_32);
 HelpBlocksBuff := AllocMem(HelpBlocks * BlockSize_32);
 try
-  Move({%H-}Pointer(PtrUInt(@Buffer) + (FullBlocks * BlockSize_32))^,HelpBlocksBuff^,LastBlockSize);
-  {%H-}PByte(PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
+  Move({%H-}Pointer({%H-}PtrUInt(@Buffer) + (FullBlocks * BlockSize_32))^,HelpBlocksBuff^,LastBlockSize);
+  {%H-}PByte({%H-}PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
   {$IFDEF x64}
-  {%H-}PQuadWord(PtrUInt(HelpBlocksBuff) + (HelpBlocks * BlockSize_32) - SizeOf(QuadWord))^ := EndianSwap(MessageLength);
+  {%H-}PQuadWord({%H-}PtrUInt(HelpBlocksBuff) + (HelpBlocks * BlockSize_32) - SizeOf(QuadWord))^ := EndianSwap(MessageLength);
   {$ELSE}
-  {%H-}PQuadWord(PtrUInt(HelpBlocksBuff) + (Int64(HelpBlocks) * BlockSize_32) - SizeOf(QuadWord))^ := EndianSwap(MessageLength);
+  {%H-}PQuadWord({%H-}PtrUInt(HelpBlocksBuff) + (Int64(HelpBlocks) * BlockSize_32) - SizeOf(QuadWord))^ := EndianSwap(MessageLength);
   {$ENDIF}
   BufferSHA2_32(Result,HelpBlocksBuff^,HelpBlocks * BlockSize_32);
 finally
@@ -1162,12 +1162,12 @@ LastBlockSize := Size - (Int64(FullBlocks) * BlockSize_64);
 HelpBlocks := Ceil((LastBlockSize + SizeOf(OctaWord) + 1) / BlockSize_64);
 HelpBlocksBuff := AllocMem(HelpBlocks * BlockSize_64);
 try
-  Move({%H-}Pointer(PtrUInt(@Buffer) + (FullBlocks * BlockSize_64))^,HelpBlocksBuff^,LastBlockSize);
-  {%H-}PByte(PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
+  Move({%H-}Pointer({%H-}PtrUInt(@Buffer) + (FullBlocks * BlockSize_64))^,HelpBlocksBuff^,LastBlockSize);
+  {%H-}PByte({%H-}PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
   {$IFDEF x64}
-  {%H-}POctaWord(PtrUInt(HelpBlocksBuff) + (HelpBlocks * BlockSize_64) - SizeOf(OctaWord))^ := EndianSwap(MessageLength);
+  {%H-}POctaWord({%H-}PtrUInt(HelpBlocksBuff) + (HelpBlocks * BlockSize_64) - SizeOf(OctaWord))^ := EndianSwap(MessageLength);
   {$ELSE}
-  {%H-}POctaWord(PtrUInt(HelpBlocksBuff) + (Int64(HelpBlocks) * BlockSize_64) - SizeOf(OctaWord))^ := EndianSwap(MessageLength);
+  {%H-}POctaWord({%H-}PtrUInt(HelpBlocksBuff) + (Int64(HelpBlocks) * BlockSize_64) - SizeOf(OctaWord))^ := EndianSwap(MessageLength);
   {$ENDIF}
   BufferSHA2_64(Result,HelpBlocksBuff^,HelpBlocks * BlockSize_64);
 finally
@@ -1569,7 +1569,7 @@ with PSHA2Context_Internal(Context)^ do
             BufferSHA2(MessageHash,TransferBuffer,ActiveBlockSize);
             RemainingSize := Size - (ActiveBlockSize - TransferSize);
             TransferSize := 0;
-            SHA2_Update(Context,{%H-}Pointer(PtrUInt(@Buffer) + (Size - RemainingSize))^,RemainingSize)
+            SHA2_Update(Context,{%H-}Pointer({%H-}PtrUInt(@Buffer) + (Size - RemainingSize))^,RemainingSize)
           end
         else
           begin
@@ -1590,7 +1590,7 @@ with PSHA2Context_Internal(Context)^ do
             {$ELSE}
             TransferSize := Size - (Int64(FullBlocks) * ActiveBlockSize);
             {$ENDIF}
-            Move({%H-}Pointer(PtrUInt(@Buffer) + (Size - TransferSize))^,TransferBuffer,TransferSize);
+            Move({%H-}Pointer({%H-}PtrUInt(@Buffer) + (Size - TransferSize))^,TransferBuffer,TransferSize);
           end;
       end;
   end;
