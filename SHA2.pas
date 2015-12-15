@@ -9,9 +9,9 @@
 
   SHA2 Hash Calculation
 
-  ©František Milt 2015-05-07
+  ©František Milt 2015-12-15
 
-  Version 1.0.1
+  Version 1.0.2
 
   Following hash sizes are supported in current implementation:
     SHA-224
@@ -25,7 +25,25 @@
 unit SHA2;
 
 {$DEFINE LargeBuffer}
-{.$DEFINE UseStringStream}
+
+{$IF defined(CPUX86_64) or defined(CPUX64)}
+  {$DEFINE x64}
+  {$IF not(defined(WINDOWS) or defined(MSWINDOWS))}
+    {$DEFINE PurePascal}
+  {$IFEND}
+{$ELSEIF defined(CPU386)}
+  {$DEFINE x86}
+{$ELSE}
+  {$DEFINE PurePascal}
+{$IFEND}
+
+{$IF defined(FPC) and not defined(PurePascal)}
+  {$ASMMODE Intel}
+{$IFEND}
+
+{$IFDEF ENDIAN_BIG}
+  {$MESSAGE FATAL 'Big-endian system not supported'}
+{$ENDIF}
 
 {$IFOPT Q+}
   {$DEFINE OverflowCheck}
@@ -34,38 +52,18 @@ unit SHA2;
 interface
 
 uses
-  Classes;
+  Classes, AuxTypes;
 
 type
-{$IFDEF FPC}
-  QuadWord = QWord;
-{$ELSE}
-{$IF CompilerVersion <= 15}
-  QuadWord = Int64;
-{$ELSE}
-  QuadWord = UInt64;
-{$IFEND}
-{$ENDIF}
-  PQuadWord = ^QuadWord;
-
-{$IFDEF x64}
-  PtrUInt = UInt64;
-{$ELSE}
-  PtrUInt = LongWord;
-{$ENDIF}
-
-  TSize = PtrUInt;
-
-
   TOctaWord = record
     case Integer of
-      0:(Lo,Hi:     QuadWord);
-      1:(Bytes:     Array[0..15] of Byte);
-      2:(Words:     Array[0..7] of Word);
-      3:(LongWords: Array[0..3] of LongWord);
-      4:(QuadWords: Array[0..1] of QuadWord);
+      0:(Lo,Hi:   UInt64);
+      1:(Bytes:   array[0..15] of UInt8);
+      2:(Words:   array[0..7] of UInt16);
+      3:(DWords:  array[0..3] of UInt32);
+      4:(QWords:  array[0..1] of UInt64);
   end;
-  POctaWord = ^TOctaWord;  
+  POctaWord = ^TOctaWord;
   OctaWord = TOctaWord;
 
 const
@@ -73,28 +71,28 @@ const
 
 type
   TSHA2Hash_32 = record
-    PartA:  LongWord;
-    PartB:  LongWord;
-    PartC:  LongWord;
-    PartD:  LongWord;
-    PartE:  LongWord;
-    PartF:  LongWord;
-    PartG:  LongWord;
-    PartH:  LongWord;
+    PartA:  UInt32;
+    PartB:  UInt32;
+    PartC:  UInt32;
+    PartD:  UInt32;
+    PartE:  UInt32;
+    PartF:  UInt32;
+    PartG:  UInt32;
+    PartH:  UInt32;
   end;
 
   TSHA2Hash_224 = type TSHA2Hash_32;
   TSHA2Hash_256 = type TSHA2Hash_32;
 
   TSHA2Hash_64 = record
-    PartA:  QuadWord;
-    PartB:  QuadWord;
-    PartC:  QuadWord;
-    PartD:  QuadWord;
-    PartE:  QuadWord;
-    PartF:  QuadWord;
-    PartG:  QuadWord;
-    PartH:  QuadWord;
+    PartA:  UInt64;
+    PartB:  UInt64;
+    PartC:  UInt64;
+    PartD:  UInt64;
+    PartE:  UInt64;
+    PartF:  UInt64;
+    PartG:  UInt64;
+    PartH:  UInt64;
   end;
 
   TSHA2Hash_384 = type TSHA2Hash_64;
@@ -137,34 +135,34 @@ const
     PartH: $5BE0CD19);
 
   InitialSHA2_384: TSHA2Hash_384 =(
-    PartA: QuadWord($CBBB9D5DC1059ED8);
-    PartB: QuadWord($629A292A367CD507);
-    PartC: QuadWord($9159015A3070DD17);
-    PartD: QuadWord($152FECD8F70E5939);
-    PartE: QuadWord($67332667FFC00B31);
-    PartF: QuadWord($8EB44A8768581511);
-    PartG: QuadWord($DB0C2E0D64F98FA7);
-    PartH: QuadWord($47B5481DBEFA4FA4));
+    PartA: UInt64($CBBB9D5DC1059ED8);
+    PartB: UInt64($629A292A367CD507);
+    PartC: UInt64($9159015A3070DD17);
+    PartD: UInt64($152FECD8F70E5939);
+    PartE: UInt64($67332667FFC00B31);
+    PartF: UInt64($8EB44A8768581511);
+    PartG: UInt64($DB0C2E0D64F98FA7);
+    PartH: UInt64($47B5481DBEFA4FA4));
 
   InitialSHA2_512: TSHA2Hash_512 =(
-    PartA: QuadWord($6A09E667F3BCC908);
-    PartB: QuadWord($BB67AE8584CAA73B);
-    PartC: QuadWord($3C6EF372FE94F82B);
-    PartD: QuadWord($A54FF53A5F1D36F1);
-    PartE: QuadWord($510E527FADE682D1);
-    PartF: QuadWord($9B05688C2B3E6C1F);
-    PartG: QuadWord($1F83D9ABFB41BD6B);
-    PartH: QuadWord($5BE0CD19137E2179));
+    PartA: UInt64($6A09E667F3BCC908);
+    PartB: UInt64($BB67AE8584CAA73B);
+    PartC: UInt64($3C6EF372FE94F82B);
+    PartD: UInt64($A54FF53A5F1D36F1);
+    PartE: UInt64($510E527FADE682D1);
+    PartF: UInt64($9B05688C2B3E6C1F);
+    PartG: UInt64($1F83D9ABFB41BD6B);
+    PartH: UInt64($5BE0CD19137E2179));
 
   InitialSHA2_512mod: TSHA2Hash_512 =(
-    PartA: QuadWord($CFAC43C256196CAD);
-    PartB: QuadWord($1EC20B20216F029E);
-    Partc: QuadWord($99CB56D75B315D8E);
-    PartD: QuadWord($00EA509FFAB89354);
-    PartE: QuadWord($F4ABF7DA08432774);
-    PartF: QuadWord($3EA0CD298E9BC9BA);
-    PartG: QuadWord($BA267C0E5EE418CE);
-    PartH: QuadWord($FE4568BCB6DB84DC));
+    PartA: UInt64($CFAC43C256196CAD);
+    PartB: UInt64($1EC20B20216F029E);
+    Partc: UInt64($99CB56D75B315D8E);
+    PartD: UInt64($00EA509FFAB89354);
+    PartE: UInt64($F4ABF7DA08432774);
+    PartF: UInt64($3EA0CD298E9BC9BA);
+    PartG: UInt64($BA267C0E5EE418CE);
+    PartH: UInt64($FE4568BCB6DB84DC));
 
   ZeroSHA2_224: TSHA2Hash_224 = (PartA: 0; PartB: 0; PartC: 0; PartD: 0;
                                  PartE: 0; PartF: 0; PartG: 0; PartH: 0);    
@@ -180,7 +178,9 @@ const
   ZeroSHA2_512_256: TSHA2Hash_512_256 = (PartA: 0; PartB: 0; PartC: 0; PartD: 0;
                                          PartE: 0; PartF: 0; PartG: 0; PartH: 0);
 
-Function BuildOctaWord(Lo,Hi: QuadWord): OctaWord;
+//------------------------------------------------------------------------------
+
+Function BuildOctaWord(Lo,Hi: UInt64): OctaWord;
 
 Function InitialSHA2_512_224: TSHA2Hash_512_224;
 Function InitialSHA2_512_256: TSHA2Hash_512_256;
@@ -229,46 +229,46 @@ Function SameSHA2(A,B: TSHA2Hash): Boolean; overload;
 
 //------------------------------------------------------------------------------
 
-procedure BufferSHA2(var Hash: TSHA2Hash_224; const Buffer; Size: TSize); overload;
-procedure BufferSHA2(var Hash: TSHA2Hash_256; const Buffer; Size: TSize); overload;
-procedure BufferSHA2(var Hash: TSHA2Hash_384; const Buffer; Size: TSize); overload;
-procedure BufferSHA2(var Hash: TSHA2Hash_512; const Buffer; Size: TSize); overload;
-procedure BufferSHA2(var Hash: TSHA2Hash_512_224; const Buffer; Size: TSize); overload;
-procedure BufferSHA2(var Hash: TSHA2Hash_512_256; const Buffer; Size: TSize); overload;
-procedure BufferSHA2(var Hash: TSHA2Hash; const Buffer; Size: TSize); overload;
+procedure BufferSHA2(var Hash: TSHA2Hash_224; const Buffer; Size: TMemSize); overload;
+procedure BufferSHA2(var Hash: TSHA2Hash_256; const Buffer; Size: TMemSize); overload;
+procedure BufferSHA2(var Hash: TSHA2Hash_384; const Buffer; Size: TMemSize); overload;
+procedure BufferSHA2(var Hash: TSHA2Hash_512; const Buffer; Size: TMemSize); overload;
+procedure BufferSHA2(var Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize); overload;
+procedure BufferSHA2(var Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize); overload;
+procedure BufferSHA2(var Hash: TSHA2Hash; const Buffer; Size: TMemSize); overload;
 
-Function LastBufferSHA2(Hash: TSHA2Hash_224; const Buffer; Size: TSize; MessageLength: QuadWord): TSHA2Hash_224; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_256; const Buffer; Size: TSize; MessageLength: QuadWord): TSHA2Hash_256; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TSize; MessageLength: OctaWord): TSHA2Hash_384; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TSize; MessageLength: OctaWord): TSHA2Hash_512; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TSize; MessageLength: OctaWord): TSHA2Hash_512_224; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TSize; MessageLength: OctaWord): TSHA2Hash_512_256; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_224; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2Hash_224; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_256; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2Hash_256; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_384; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_512; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_512_224; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_512_256; overload;
 
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TSize; MessageLengthLo: QuadWord): TSHA2Hash_384; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TSize; MessageLengthLo: QuadWord): TSHA2Hash_512; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TSize; MessageLengthLo: QuadWord): TSHA2Hash_512_224; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TSize; MessageLengthLo: QuadWord): TSHA2Hash_512_256; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_384; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_512; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_512_224; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_512_256; overload;
 
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TSize; MessageLengthLo, MessageLengthHi: QuadWord): TSHA2Hash_384; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TSize; MessageLengthLo, MessageLengthHi: QuadWord): TSHA2Hash_512; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TSize; MessageLengthLo, MessageLengthHi: QuadWord): TSHA2Hash_512_224; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TSize; MessageLengthLo, MessageLengthHi: QuadWord): TSHA2Hash_512_256; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_384; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_512; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_512_224; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_512_256; overload;
 
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TSize; MessageLength: QuadWord): TSHA2Hash; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TSize; MessageLengthLo, MessageLengthHi: QuadWord): TSHA2Hash; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TSize; MessageLength: OctaWord): TSHA2Hash; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2Hash; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash; overload;
 
-Function LastBufferSHA2(Hash: TSHA2Hash_224; const Buffer; Size: TSize): TSHA2Hash_224; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_256; const Buffer; Size: TSize): TSHA2Hash_256; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TSize): TSHA2Hash_384; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TSize): TSHA2Hash_512; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TSize): TSHA2Hash_512_224; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TSize): TSHA2Hash_512_256; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TSize): TSHA2Hash; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_224; const Buffer; Size: TMemSize): TSHA2Hash_224; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_256; const Buffer; Size: TMemSize): TSHA2Hash_256; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize): TSHA2Hash_384; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize): TSHA2Hash_512; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize): TSHA2Hash_512_224; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize): TSHA2Hash_512_256; overload;
+Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize): TSHA2Hash; overload;
 
 //------------------------------------------------------------------------------
 
-Function BufferSHA2(HashSize: TSHA2HashSize; const Buffer; Size: TSize): TSHA2Hash; overload;
+Function BufferSHA2(HashSize: TSHA2HashSize; const Buffer; Size: TMemSize): TSHA2Hash; overload;
 
 Function AnsiStringSHA2(HashSize: TSHA2HashSize; const Str: AnsiString): TSHA2Hash;
 Function WideStringSHA2(HashSize: TSHA2HashSize; const Str: WideString): TSHA2Hash;
@@ -283,10 +283,10 @@ type
   TSHA2Context = type Pointer;
 
 Function SHA2_Init(HashSize: TSHA2HashSize): TSHA2Context;
-procedure SHA2_Update(Context: TSHA2Context; const Buffer; Size: TSize);
-Function SHA2_Final(var Context: TSHA2Context; const Buffer; Size: TSize): TSHA2Hash; overload;
+procedure SHA2_Update(Context: TSHA2Context; const Buffer; Size: TMemSize);
+Function SHA2_Final(var Context: TSHA2Context; const Buffer; Size: TMemSize): TSHA2Hash; overload;
 Function SHA2_Final(var Context: TSHA2Context): TSHA2Hash; overload;
-Function SHA2_Hash(HashSize: TSHA2HashSize; const Buffer; Size: TSize): TSHA2Hash;
+Function SHA2_Hash(HashSize: TSHA2HashSize; const Buffer; Size: TMemSize): TSHA2Hash;
 
 implementation
 
@@ -303,7 +303,7 @@ const
 {$ENDIF}
   BufferSize      = BlocksPerBuffer * BlockSize_32; // Size of read buffer
 
-  RoundConsts_32: Array[0..63] of LongWord = (
+  RoundConsts_32: array[0..63] of UInt32 = (
     $428A2F98, $71374491, $B5C0FBCF, $E9B5DBA5, $3956C25B, $59F111F1, $923F82A4, $AB1C5ED5,
     $D807AA98, $12835B01, $243185BE, $550C7DC3, $72BE5D74, $80DEB1FE, $9BDC06A7, $C19BF174,
     $E49B69C1, $EFBE4786, $0FC19DC6, $240CA1CC, $2DE92C6F, $4A7484AA, $5CB0A9DC, $76F988DA,
@@ -313,71 +313,62 @@ const
     $19A4C116, $1E376C08, $2748774C, $34B0BCB5, $391C0CB3, $4ED8AA4A, $5B9CCA4F, $682E6FF3,
     $748F82EE, $78A5636F, $84C87814, $8CC70208, $90BEFFFA, $A4506CEB, $BEF9A3F7, $C67178F2);
 
-  RoundConsts_64: Array[0..79] of QuadWord = (
-    QuadWord($428A2F98D728AE22), QuadWord($7137449123EF65CD), QuadWord($B5C0FBCFEC4D3B2F), QuadWord($E9B5DBA58189DBBC),
-    QuadWord($3956C25BF348B538), QuadWord($59F111F1B605D019), QuadWord($923F82A4AF194F9B), QuadWord($AB1C5ED5DA6D8118),
-    QuadWord($D807AA98A3030242), QuadWord($12835B0145706FBE), QuadWord($243185BE4EE4B28C), QuadWord($550C7DC3D5FFB4E2),
-    QuadWord($72BE5D74F27B896F), QuadWord($80DEB1FE3B1696B1), QuadWord($9BDC06A725C71235), QuadWord($C19BF174CF692694),
-    QuadWord($E49B69C19EF14AD2), QuadWord($EFBE4786384F25E3), QuadWord($0FC19DC68B8CD5B5), QuadWord($240CA1CC77AC9C65),
-    QuadWord($2DE92C6F592B0275), QuadWord($4A7484AA6EA6E483), QuadWord($5CB0A9DCBD41FBD4), QuadWord($76F988DA831153B5),
-    QuadWord($983E5152EE66DFAB), QuadWord($A831C66D2DB43210), QuadWord($B00327C898FB213F), QuadWord($BF597FC7BEEF0EE4),
-    QuadWord($C6E00BF33DA88FC2), QuadWord($D5A79147930AA725), QuadWord($06CA6351E003826F), QuadWord($142929670A0E6E70),
-    QuadWord($27B70A8546D22FFC), QuadWord($2E1B21385C26C926), QuadWord($4D2C6DFC5AC42AED), QuadWord($53380D139D95B3DF),
-    QuadWord($650A73548BAF63DE), QuadWord($766A0ABB3C77B2A8), QuadWord($81C2C92E47EDAEE6), QuadWord($92722C851482353B),
-    QuadWord($A2BFE8A14CF10364), QuadWord($A81A664BBC423001), QuadWord($C24B8B70D0F89791), QuadWord($C76C51A30654BE30),
-    QuadWord($D192E819D6EF5218), QuadWord($D69906245565A910), QuadWord($F40E35855771202A), QuadWord($106AA07032BBD1B8),
-    QuadWord($19A4C116B8D2D0C8), QuadWord($1E376C085141AB53), QuadWord($2748774CDF8EEB99), QuadWord($34B0BCB5E19B48A8),
-    QuadWord($391C0CB3C5C95A63), QuadWord($4ED8AA4AE3418ACB), QuadWord($5B9CCA4F7763E373), QuadWord($682E6FF3D6B2B8A3),
-    QuadWord($748F82EE5DEFB2FC), QuadWord($78A5636F43172F60), QuadWord($84C87814A1F0AB72), QuadWord($8CC702081A6439EC),
-    QuadWord($90BEFFFA23631E28), QuadWord($A4506CEBDE82BDE9), QuadWord($BEF9A3F7B2C67915), QuadWord($C67178F2E372532B),
-    QuadWord($CA273ECEEA26619C), QuadWord($D186B8C721C0C207), QuadWord($EADA7DD6CDE0EB1E), QuadWord($F57D4F7FEE6ED178),
-    QuadWord($06F067AA72176FBA), QuadWord($0A637DC5A2C898A6), QuadWord($113F9804BEF90DAE), QuadWord($1B710B35131C471B),
-    QuadWord($28DB77F523047D84), QuadWord($32CAAB7B40C72493), QuadWord($3C9EBE0A15C9BEBC), QuadWord($431D67C49C100D4C),
-    QuadWord($4CC5D4BECB3E42B6), QuadWord($597F299CFC657E2A), QuadWord($5FCB6FAB3AD6FAEC), QuadWord($6C44198C4A475817));
+  RoundConsts_64: array[0..79] of UInt64 = (
+    UInt64($428A2F98D728AE22), UInt64($7137449123EF65CD), UInt64($B5C0FBCFEC4D3B2F), UInt64($E9B5DBA58189DBBC),
+    UInt64($3956C25BF348B538), UInt64($59F111F1B605D019), UInt64($923F82A4AF194F9B), UInt64($AB1C5ED5DA6D8118),
+    UInt64($D807AA98A3030242), UInt64($12835B0145706FBE), UInt64($243185BE4EE4B28C), UInt64($550C7DC3D5FFB4E2),
+    UInt64($72BE5D74F27B896F), UInt64($80DEB1FE3B1696B1), UInt64($9BDC06A725C71235), UInt64($C19BF174CF692694),
+    UInt64($E49B69C19EF14AD2), UInt64($EFBE4786384F25E3), UInt64($0FC19DC68B8CD5B5), UInt64($240CA1CC77AC9C65),
+    UInt64($2DE92C6F592B0275), UInt64($4A7484AA6EA6E483), UInt64($5CB0A9DCBD41FBD4), UInt64($76F988DA831153B5),
+    UInt64($983E5152EE66DFAB), UInt64($A831C66D2DB43210), UInt64($B00327C898FB213F), UInt64($BF597FC7BEEF0EE4),
+    UInt64($C6E00BF33DA88FC2), UInt64($D5A79147930AA725), UInt64($06CA6351E003826F), UInt64($142929670A0E6E70),
+    UInt64($27B70A8546D22FFC), UInt64($2E1B21385C26C926), UInt64($4D2C6DFC5AC42AED), UInt64($53380D139D95B3DF),
+    UInt64($650A73548BAF63DE), UInt64($766A0ABB3C77B2A8), UInt64($81C2C92E47EDAEE6), UInt64($92722C851482353B),
+    UInt64($A2BFE8A14CF10364), UInt64($A81A664BBC423001), UInt64($C24B8B70D0F89791), UInt64($C76C51A30654BE30),
+    UInt64($D192E819D6EF5218), UInt64($D69906245565A910), UInt64($F40E35855771202A), UInt64($106AA07032BBD1B8),
+    UInt64($19A4C116B8D2D0C8), UInt64($1E376C085141AB53), UInt64($2748774CDF8EEB99), UInt64($34B0BCB5E19B48A8),
+    UInt64($391C0CB3C5C95A63), UInt64($4ED8AA4AE3418ACB), UInt64($5B9CCA4F7763E373), UInt64($682E6FF3D6B2B8A3),
+    UInt64($748F82EE5DEFB2FC), UInt64($78A5636F43172F60), UInt64($84C87814A1F0AB72), UInt64($8CC702081A6439EC),
+    UInt64($90BEFFFA23631E28), UInt64($A4506CEBDE82BDE9), UInt64($BEF9A3F7B2C67915), UInt64($C67178F2E372532B),
+    UInt64($CA273ECEEA26619C), UInt64($D186B8C721C0C207), UInt64($EADA7DD6CDE0EB1E), UInt64($F57D4F7FEE6ED178),
+    UInt64($06F067AA72176FBA), UInt64($0A637DC5A2C898A6), UInt64($113F9804BEF90DAE), UInt64($1B710B35131C471B),
+    UInt64($28DB77F523047D84), UInt64($32CAAB7B40C72493), UInt64($3C9EBE0A15C9BEBC), UInt64($431D67C49C100D4C),
+    UInt64($4CC5D4BECB3E42B6), UInt64($597F299CFC657E2A), UInt64($5FCB6FAB3AD6FAEC), UInt64($6C44198C4A475817));
 
 type
-  TBlockBuffer_32 = Array[0..BlockSize_32 - 1] of Byte;
+  TBlockBuffer_32 = array[0..BlockSize_32 - 1] of UInt8;
   PBlockBuffer_32 = ^TBlockBuffer_32;
-  TBlockBuffer_64 = Array[0..BlockSize_64 - 1] of Byte;
+  TBlockBuffer_64 = array[0..BlockSize_64 - 1] of UInt8;
   PBlockBuffer_64 = ^TBlockBuffer_64;
 
   TSHA2Context_Internal = record
     MessageHash:      TSHA2Hash;
     MessageLength:    OctaWord;
-    TransferSize:     LongWord;
+    TransferSize:     UInt32;
     TransferBuffer:   TBlockBuffer_64;
-    ActiveBlockSize:  LongWord;
+    ActiveBlockSize:  UInt32;
   end;
   PSHA2Context_Internal = ^TSHA2Context_Internal;
 
 //==============================================================================
 
-{$IFDEF FPC}{$ASMMODE intel}{$ENDIF}
-
-Function EndianSwap(Value: LongWord): LongWord;{$IFNDEF PurePascal}assembler;{$ENDIF} overload;
-{$IFDEF PurePascal}
-begin
-Result := LongWord((Value and $000000FF shl 24) or (Value and $0000FF00 shl 8) or
-                   (Value and $00FF0000 shr 8) or (Value and $FF000000 shr 24));
-end;
-{$ELSE}
+Function EndianSwap(Value: UInt32): UInt32; register; overload; {$IFNDEF PurePascal} assembler;
 asm
 {$IFDEF x64}
     MOV   RAX,  RCX
 {$ENDIF}
     BSWAP EAX
 end;
+{$ELSE}
+begin
+Result := UInt32((Value and $000000FF shl 24) or (Value and $0000FF00 shl 8) or
+                 (Value and $00FF0000 shr 8) or (Value and $FF000000 shr 24));
+end;
 {$ENDIF}
       
 //------------------------------------------------------------------------------
 
-Function EndianSwap(Value: QuadWord): QuadWord;{$IFNDEF PurePascal}assembler;{$ENDIF} overload;
-{$IFDEF PurePascal}
-begin
-Int64Rec(Result).Hi := EndianSwap(Int64Rec(Value).Lo);
-Int64Rec(Result).Lo := EndianSwap(Int64Rec(Value).Hi);
-end;
-{$ELSE}
+Function EndianSwap(Value: UInt64): UInt64; register; overload; {$IFNDEF PurePascal}assembler;
 asm
 {$IFDEF x64}
     MOV   RAX,  RCX
@@ -388,6 +379,11 @@ asm
     BSWAP EAX
     BSWAP EDX
 {$ENDIF}
+end;
+{$ELSE}
+begin
+Int64Rec(Result).Hi := EndianSwap(Int64Rec(Value).Lo);
+Int64Rec(Result).Lo := EndianSwap(Int64Rec(Value).Hi);
 end;
 {$ENDIF}
 
@@ -401,13 +397,7 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function RightRotate(Value: LongWord; Shift: Byte): LongWord;{$IFNDEF PurePascal}assembler;{$ENDIF} overload;
-{$IFDEF PurePascal}
-begin
-Shift := Shift and $1F;
-Result := LongWord((Value shr Shift) or (Value shl (32 - Shift)));
-end;
-{$ELSE}
+Function RightRotate(Value: UInt32; Shift: Byte): UInt32; register; overload; {$IFNDEF PurePascal}assembler;
 asm
 {$IFDEF x64}
     MOV   EAX,  ECX
@@ -415,17 +405,16 @@ asm
     MOV   CL,   DL
     ROR   EAX,  CL
 end;
+{$ELSE}
+begin
+Shift := Shift and $1F;
+Result := UInt32((Value shr Shift) or (Value shl (32 - Shift)));
+end;
 {$ENDIF}
 
 //------------------------------------------------------------------------------
 
-Function RightRotate(Value: QuadWord; Shift: Byte): QuadWord;{$IFNDEF PurePascal}assembler;{$ENDIF} overload;
-{$IFDEF PurePascal}
-begin
-Shift := Shift and $3F;
-Result := QuadWord((Value shr Shift) or (Value shl (64 - Shift)));
-end;
-{$ELSE}
+Function RightRotate(Value: UInt64; Shift: Byte): UInt64; register; overload; {$IFNDEF PurePascal}assembler;
 asm
 {$IFDEF x64}
     MOV   RAX,  RCX
@@ -468,29 +457,34 @@ asm
   @FuncEnd:
 {$ENDIF}
 end;
+{$ELSE}
+begin
+Shift := Shift and $3F;
+Result := UInt64((Value shr Shift) or (Value shl (64 - Shift)));
+end;
 {$ENDIF}
 
 //------------------------------------------------------------------------------
 
-Function SizeToMessageLength(Size: QuadWord): OctaWord; overload;
+Function SizeToMessageLength(Size: UInt64): OctaWord;
 begin
-Result.Hi := QuadWord(Size shr 61);
-Result.Lo := QuadWord(Size shl 3);
+Result.Hi := UInt64(Size shr 61);
+Result.Lo := UInt64(Size shl 3);
 end;
 
 //------------------------------------------------------------------------------
 
-procedure IncOW(var Value: OctaWord; Increment: OctaWord); overload;
+procedure IncOctaWord(var Value: OctaWord; Increment: OctaWord);
 var
-  Result: QuadWord;
-  Carry:  LongWord;
+  Result: UInt64;
+  Carry:  UInt32;
   i:      Integer;
 begin
 Carry := 0;
-For i := Low(Value.LongWords) to High(Value.LongWords) do
+For i := Low(Value.DWords) to High(Value.DWords) do
   begin
-    Result := QuadWord(Carry) + Value.LongWords[i] + Increment.LongWords[i];
-    Value.LongWords[i] := Int64Rec(Result).Lo;
+    Result := UInt64(Carry) + Value.DWords[i] + Increment.DWords[i];
+    Value.DWords[i] := Int64Rec(Result).Lo;
     Carry := Int64Rec(Result).Hi;
   end;
 end;
@@ -500,39 +494,39 @@ end;
 Function BlockHash_32(Hash: TSHA2Hash_32; const Block): TSHA2Hash_32;
 var
   i:            Integer;
-  Temp1,Temp2:  LongWord;
-  Schedule:     Array[0..63] of LongWord;
-  BlockWords:   Array[0..15] of LongWord absolute Block;
+  Temp1,Temp2:  UInt32;
+  Schedule:     array[0..63] of UInt32;
+  BlockWords:   array[0..15] of UInt32 absolute Block;
 begin
 Result := Hash;
 For i := 0 to 15 do Schedule[i] := EndianSwap(BlockWords[i]);
 {$IFDEF OverflowCheck}{$Q-}{$ENDIF}
 For i := 16 to 63 do
-  Schedule[i] := LongWord(Schedule[i - 16] + (RightRotate(Schedule[i - 15],7) xor RightRotate(Schedule[i - 15],18) xor (Schedule[i - 15] shr 3)) +
-                          Schedule[i - 7] + (RightRotate(Schedule[i - 2],17) xor RightRotate(Schedule[i - 2],19) xor (Schedule[i - 2] shr 10)));
+  Schedule[i] := UInt32(Schedule[i - 16] + (RightRotate(Schedule[i - 15],7) xor RightRotate(Schedule[i - 15],18) xor (Schedule[i - 15] shr 3)) +
+                        Schedule[i - 7] + (RightRotate(Schedule[i - 2],17) xor RightRotate(Schedule[i - 2],19) xor (Schedule[i - 2] shr 10)));
 For i := 0 to 63 do
   begin
-    Temp1 := LongWord(Hash.PartH + (RightRotate(Hash.PartE,6) xor RightRotate(Hash.PartE,11) xor RightRotate(Hash.PartE,25)) +
-                      ((Hash.PartE and Hash.PartF) xor ((not Hash.PartE) and Hash.PartG)) + RoundConsts_32[i] + Schedule[i]);
-    Temp2 := LongWord((RightRotate(Hash.PartA,2) xor RightRotate(Hash.PartA,13) xor RightRotate(Hash.PartA,22)) +
-                      ((Hash.PartA and Hash.PartB) xor (Hash.PartA and Hash.PartC) xor (Hash.PartB and Hash.PartC)));
+    Temp1 := UInt32(Hash.PartH + (RightRotate(Hash.PartE,6) xor RightRotate(Hash.PartE,11) xor RightRotate(Hash.PartE,25)) +
+                  ((Hash.PartE and Hash.PartF) xor ((not Hash.PartE) and Hash.PartG)) + RoundConsts_32[i] + Schedule[i]);
+    Temp2 := UInt32((RightRotate(Hash.PartA,2) xor RightRotate(Hash.PartA,13) xor RightRotate(Hash.PartA,22)) +
+                   ((Hash.PartA and Hash.PartB) xor (Hash.PartA and Hash.PartC) xor (Hash.PartB and Hash.PartC)));
     Hash.PartH := Hash.PartG;
     Hash.PartG := Hash.PartF;
     Hash.PartF := Hash.PartE;
-    Hash.PartE := LongWord(Hash.PartD + Temp1);
+    Hash.PartE := UInt32(Hash.PartD + Temp1);
     Hash.PartD := Hash.PartC;
     Hash.PartC := Hash.PartB;
     Hash.PartB := Hash.PartA;
-    Hash.PartA := LongWord(Temp1 + Temp2);
+    Hash.PartA := UInt32(Temp1 + Temp2);
   end;
-Result.PartA := LongWord(Result.PartA + Hash.PartA);
-Result.PartB := LongWord(Result.PartB + Hash.PartB);
-Result.PartC := LongWord(Result.PartC + Hash.PartC);
-Result.PartD := LongWord(Result.PartD + Hash.PartD);
-Result.PartE := LongWord(Result.PartE + Hash.PartE);
-Result.PartF := LongWord(Result.PartF + Hash.PartF);
-Result.PartG := LongWord(Result.PartG + Hash.PartG);
-Result.PartH := LongWord(Result.PartH + Hash.PartH);
+Result.PartA := UInt32(Result.PartA + Hash.PartA);
+Result.PartB := UInt32(Result.PartB + Hash.PartB);
+Result.PartC := UInt32(Result.PartC + Hash.PartC);
+Result.PartD := UInt32(Result.PartD + Hash.PartD);
+Result.PartE := UInt32(Result.PartE + Hash.PartE);
+Result.PartF := UInt32(Result.PartF + Hash.PartF);
+Result.PartG := UInt32(Result.PartG + Hash.PartG);
+Result.PartH := UInt32(Result.PartH + Hash.PartH);
 {$IFDEF OverflowCheck}{$Q+}{$ENDIF}
 end;
 
@@ -541,39 +535,39 @@ end;
 Function BlockHash_64(Hash: TSHA2Hash_64; const Block): TSHA2Hash_64;
 var
   i:            Integer;
-  Temp1,Temp2:  QuadWord;
-  Schedule:     Array[0..79] of QuadWord;
-  BlockWords:   Array[0..15] of QuadWord absolute Block;
+  Temp1,Temp2:  UInt64;
+  Schedule:     array[0..79] of UInt64;
+  BlockWords:   array[0..15] of UInt64 absolute Block;
 begin
 Result := Hash;
 For i := 0 to 15 do Schedule[i] := EndianSwap(BlockWords[i]);
 {$IFDEF OverflowCheck}{$Q-}{$ENDIF}
 For i := 16 to 79 do
-  Schedule[i] := QuadWord(Schedule[i - 16] + (RightRotate(Schedule[i - 15],1) xor RightRotate(Schedule[i - 15],8) xor (Schedule[i - 15] shr 7)) +
-                          Schedule[i - 7] + (RightRotate(Schedule[i - 2],19) xor RightRotate(Schedule[i - 2],61) xor (Schedule[i - 2] shr 6)));
+  Schedule[i] := UInt64(Schedule[i - 16] + (RightRotate(Schedule[i - 15],1) xor RightRotate(Schedule[i - 15],8) xor (Schedule[i - 15] shr 7)) +
+                        Schedule[i - 7] + (RightRotate(Schedule[i - 2],19) xor RightRotate(Schedule[i - 2],61) xor (Schedule[i - 2] shr 6)));
 For i := 0 to 79 do
   begin
-    Temp1 := QuadWord(Hash.PartH + (RightRotate(Hash.PartE,14) xor RightRotate(Hash.PartE,18) xor RightRotate(Hash.PartE,41)) +
-                      ((Hash.PartE and Hash.PartF) xor ((not Hash.PartE) and Hash.PartG)) + RoundConsts_64[i] + Schedule[i]);
-    Temp2 := QuadWord((RightRotate(Hash.PartA,28) xor RightRotate(Hash.PartA,34) xor RightRotate(Hash.PartA,39)) +
-                      ((Hash.PartA and Hash.PartB) xor (Hash.PartA and Hash.PartC) xor (Hash.PartB and Hash.PartC)));
+    Temp1 := UInt64(Hash.PartH + (RightRotate(Hash.PartE,14) xor RightRotate(Hash.PartE,18) xor RightRotate(Hash.PartE,41)) +
+                  ((Hash.PartE and Hash.PartF) xor ((not Hash.PartE) and Hash.PartG)) + RoundConsts_64[i] + Schedule[i]);
+    Temp2 := UInt64((RightRotate(Hash.PartA,28) xor RightRotate(Hash.PartA,34) xor RightRotate(Hash.PartA,39)) +
+                   ((Hash.PartA and Hash.PartB) xor (Hash.PartA and Hash.PartC) xor (Hash.PartB and Hash.PartC)));
     Hash.PartH := Hash.PartG;
     Hash.PartG := Hash.PartF;
     Hash.PartF := Hash.PartE;
-    Hash.PartE := QuadWord(Hash.PartD + Temp1);
+    Hash.PartE := UInt64(Hash.PartD + Temp1);
     Hash.PartD := Hash.PartC;
     Hash.PartC := Hash.PartB;
     Hash.PartB := Hash.PartA;
-    Hash.PartA := QuadWord(Temp1 + Temp2);
+    Hash.PartA := UInt64(Temp1 + Temp2);
   end;
-Result.PartA := QuadWord(Result.PartA + Hash.PartA);
-Result.PartB := QuadWord(Result.PartB + Hash.PartB);
-Result.PartC := QuadWord(Result.PartC + Hash.PartC);
-Result.PartD := QuadWord(Result.PartD + Hash.PartD);
-Result.PartE := QuadWord(Result.PartE + Hash.PartE);
-Result.PartF := QuadWord(Result.PartF + Hash.PartF);
-Result.PartG := QuadWord(Result.PartG + Hash.PartG);
-Result.PartH := QuadWord(Result.PartH + Hash.PartH);
+Result.PartA := UInt64(Result.PartA + Hash.PartA);
+Result.PartB := UInt64(Result.PartB + Hash.PartB);
+Result.PartC := UInt64(Result.PartC + Hash.PartC);
+Result.PartD := UInt64(Result.PartD + Hash.PartD);
+Result.PartE := UInt64(Result.PartE + Hash.PartE);
+Result.PartF := UInt64(Result.PartF + Hash.PartF);
+Result.PartG := UInt64(Result.PartG + Hash.PartG);
+Result.PartH := UInt64(Result.PartH + Hash.PartH);
 {$IFDEF OverflowCheck}{$Q+}{$ENDIF}
 end;
 
@@ -581,7 +575,7 @@ end;
 //------------------------------------------------------------------------------
 //==============================================================================
 
-Function BuildOctaWord(Lo,Hi: QuadWord): OctaWord;
+Function BuildOctaWord(Lo,Hi: UInt64): OctaWord;
 begin
 Result.Lo := Lo;
 Result.Hi := Hi;
@@ -614,9 +608,9 @@ end;
 Function SHA2ToStr_32(Hash: TSHA2Hash_32; Bits: Integer): String;
 begin
 Result := Copy(IntToHex(Hash.PartA,8) + IntToHex(Hash.PartB,8) +
-            IntToHex(Hash.PartC,8) + IntToHex(Hash.PartD,8) +
-            IntToHex(Hash.PartE,8) + IntToHex(Hash.PartF,8) +
-            IntToHex(Hash.PartG,8) + IntToHex(Hash.PartH,8),1,Bits shr 2);
+               IntToHex(Hash.PartC,8) + IntToHex(Hash.PartD,8) +
+               IntToHex(Hash.PartE,8) + IntToHex(Hash.PartF,8) +
+               IntToHex(Hash.PartG,8) + IntToHex(Hash.PartH,8),1,Bits shr 2);
 end;
 
 //------------------------------------------------------------------------------
@@ -624,9 +618,9 @@ end;
 Function SHA2ToStr_64(Hash: TSHA2Hash_64; Bits: Integer): String;
 begin
 Result := Copy(IntToHex(Hash.PartA,16) + IntToHex(Hash.PartB,16) +
-            IntToHex(Hash.PartC,16) + IntToHex(Hash.PartD,16) +
-            IntToHex(Hash.PartE,16) + IntToHex(Hash.PartF,16) +
-            IntToHex(Hash.PartG,16) + IntToHex(Hash.PartH,16),1,Bits shr 2);
+               IntToHex(Hash.PartC,16) + IntToHex(Hash.PartD,16) +
+               IntToHex(Hash.PartE,16) + IntToHex(Hash.PartF,16) +
+               IntToHex(Hash.PartG,16) + IntToHex(Hash.PartH,16),1,Bits shr 2);
 end;
 
 //------------------------------------------------------------------------------
@@ -683,7 +677,7 @@ case Hash.HashSize of
   sha512_224: Result := SHA2ToStr(Hash.Hash512_224);
   sha512_256: Result := SHA2ToStr(Hash.Hash512_256);
 else
-  raise Exception.CreateFmt('SHA2ToStr: Unknown hash size (%d)',[Integer(Hash.HashSize)]);
+  raise Exception.CreateFmt('SHA2ToStr: Unknown hash size (%d)',[Ord(Hash.HashSize)]);
 end;
 end;
 
@@ -692,11 +686,10 @@ end;
 Function StrToSHA2_32(Str: String; Bits: Integer): TSHA2Hash_32;
 var
   Characters: Integer;
-  HashWords:  Array[0..7] of LongWord absolute Result;
+  HashWords:  array[0..7] of UInt32 absolute Result;
   i:          Integer;
 begin
 Characters := Bits shr 2;
-Str := Copy(Str,Length(Str) - Characters + 1,Characters);
 If Length(Str) < Characters then
   Str := StringOfChar('0',Characters - Length(Str)) + Str
 else
@@ -704,7 +697,7 @@ else
     Str := Copy(Str,Length(Str) - Characters + 1,Characters);
 Str := Str + StringOfChar('0',64 - Length(Str));
 For i := 0 to 7 do
-  HashWords[i] := StrToInt('$' + Copy(Str,(i * 8) + 1,8));
+  HashWords[i] := UInt32(StrToInt('$' + Copy(Str,(i * 8) + 1,8)));
 end;
 
 //------------------------------------------------------------------------------
@@ -712,11 +705,10 @@ end;
 Function StrToSHA2_64(Str: String; Bits: Integer): TSHA2Hash_64;
 var
   Characters: Integer;
-  HashWords:  Array[0..7] of QuadWord absolute Result;
+  HashWords:  array[0..7] of UInt64 absolute Result;
   i:          Integer;
 begin
 Characters := Bits shr 2;
-Str := Copy(Str,Length(Str) - Characters + 1,Characters);
 If Length(Str) < Characters then
   Str := StringOfChar('0',Characters - Length(Str)) + Str
 else
@@ -724,7 +716,7 @@ else
     Str := Copy(Str,Length(Str) - Characters + 1,Characters);
 Str := Str + StringOfChar('0',128 - Length(Str));
 For i := 0 to 7 do
-  HashWords[i] := StrToInt64('$' + Copy(Str,(i * 16) + 1,16));
+  HashWords[i] := UInt64(StrToInt64('$' + Copy(Str,(i * 16) + 1,16)));
 end;
 
 //------------------------------------------------------------------------------
@@ -782,7 +774,7 @@ case HashSize of
   sha512_224: Result.Hash512_224 := StrToSHA2_512_224(Str);
   sha512_256: Result.Hash512_256 := StrToSHA2_512_256(Str);
 else
-  raise Exception.CreateFmt('StrToSHA2: Unknown hash size (%d)',[Integer(HashSize)]);
+  raise Exception.CreateFmt('StrToSHA2: Unknown hash size (%d)',[Ord(HashSize)]);
 end;
 end;
 
@@ -868,7 +860,7 @@ case HashSize of
   sha512_224: Result := TryStrToSHA2(Str,Hash.Hash512_224);
   sha512_256: Result := TryStrToSHA2(Str,Hash.Hash512_256);
 else
-  raise Exception.CreateFmt('TryStrToSHA2: Unknown hash size (%d)',[Integer(HashSize)]);
+  raise Exception.CreateFmt('TryStrToSHA2: Unknown hash size (%d)',[Ord(HashSize)]);
 end;
 end;
 
@@ -929,7 +921,7 @@ If HashSize = Default.HashSize then
     If not TryStrToSHA2(HashSize,Str,Result) then
       Result := Default;
   end
-else raise Exception.CreateFmt('StrToSHA2Def: Required hash size differs from hash size of default value (%d,%d)',[Integer(HashSize),Integer(Default.HashSize)]);
+else raise Exception.CreateFmt('StrToSHA2Def: Requested hash size differs from hash size of default value (%d,%d)',[Ord(HashSize),Ord(Default.HashSize)]);
 end;
 
 //==============================================================================
@@ -1000,7 +992,7 @@ If A.HashSize = B.HashSize then
     sha512_224: Result := SameSHA2(A.Hash512_224,B.Hash512_224);
     sha512_256: Result := SameSHA2(A.Hash512_256,B.Hash512_256);
   else
-    raise Exception.CreateFmt('SameSHA2: Unknown hash size (%d)',[Integer(A.HashSize)]);
+    raise Exception.CreateFmt('SameSHA2: Unknown hash size (%d)',[Ord(A.HashSize)]);
   end
 else Result := False;
 end;
@@ -1009,9 +1001,9 @@ end;
 //------------------------------------------------------------------------------
 //==============================================================================
 
-procedure BufferSHA2_32(var Hash: TSHA2Hash_32; const Buffer; Size: TSize);
+procedure BufferSHA2_32(var Hash: TSHA2Hash_32; const Buffer; Size: TMemSize);
 var
-  i:    TSize;
+  i:    TMemSize;
   Buff: PBlockBuffer_32;
 begin
 If Size > 0 then
@@ -1031,9 +1023,9 @@ end;
 
 //------------------------------------------------------------------------------
 
-procedure BufferSHA2_64(var Hash: TSHA2Hash_64; const Buffer; Size: TSize);
+procedure BufferSHA2_64(var Hash: TSHA2Hash_64; const Buffer; Size: TMemSize);
 var
-  i:    TSize;
+  i:    TMemSize;
   Buff: PBlockBuffer_64;
 begin
 If Size > 0 then
@@ -1053,49 +1045,49 @@ end;
 
 //------------------------------------------------------------------------------
 
-procedure BufferSHA2(var Hash: TSHA2Hash_224; const Buffer; Size: TSize);
+procedure BufferSHA2(var Hash: TSHA2Hash_224; const Buffer; Size: TMemSize);
 begin
 BufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size);
 end;
 
 //------------------------------------------------------------------------------
 
-procedure BufferSHA2(var Hash: TSHA2Hash_256; const Buffer; Size: TSize);
+procedure BufferSHA2(var Hash: TSHA2Hash_256; const Buffer; Size: TMemSize);
 begin
 BufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size);
 end;
 
 //------------------------------------------------------------------------------
 
-procedure BufferSHA2(var Hash: TSHA2Hash_384; const Buffer; Size: TSize);
+procedure BufferSHA2(var Hash: TSHA2Hash_384; const Buffer; Size: TMemSize);
 begin
 BufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size);
 end;
 
 //------------------------------------------------------------------------------
 
-procedure BufferSHA2(var Hash: TSHA2Hash_512; const Buffer; Size: TSize);
+procedure BufferSHA2(var Hash: TSHA2Hash_512; const Buffer; Size: TMemSize);
 begin
 BufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size);
 end;
 
 //------------------------------------------------------------------------------
 
-procedure BufferSHA2(var Hash: TSHA2Hash_512_224; const Buffer; Size: TSize);
+procedure BufferSHA2(var Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize);
 begin
 BufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size);
 end;
 
 //------------------------------------------------------------------------------
 
-procedure BufferSHA2(var Hash: TSHA2Hash_512_256; const Buffer; Size: TSize);
+procedure BufferSHA2(var Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize);
 begin
 BufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size);
 end;
 
 //------------------------------------------------------------------------------
 
-procedure BufferSHA2(var Hash: TSHA2Hash; const Buffer; Size: TSize);
+procedure BufferSHA2(var Hash: TSHA2Hash; const Buffer; Size: TMemSize);
 begin
 case Hash.HashSize of
   sha224:     BufferSHA2(Hash.Hash224,Buffer,Size);
@@ -1105,37 +1097,29 @@ case Hash.HashSize of
   sha512_224: BufferSHA2(Hash.Hash512_224,Buffer,Size);
   sha512_256: BufferSHA2(Hash.Hash512_256,Buffer,Size);
 else
-  raise Exception.CreateFmt('BufferSHA2: Unknown hash size (%d)',[Integer(Hash.HashSize)]);
+  raise Exception.CreateFmt('BufferSHA2: Unknown hash size (%d)',[Ord(Hash.HashSize)]);
 end;
 end;
 
 //==============================================================================
 
-Function LastBufferSHA2_32(Hash: TSHA2Hash_32; const Buffer; Size: TSize; MessageLength: QuadWord): TSHA2Hash_32;
+Function LastBufferSHA2_32(Hash: TSHA2Hash_32; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2Hash_32;
 var
-  FullBlocks:     TSize;
-  LastBlockSize:  TSize;
-  HelpBlocks:     TSize;
+  FullBlocks:     TMemSize;
+  LastBlockSize:  TMemSize;
+  HelpBlocks:     TMemSize;
   HelpBlocksBuff: Pointer;
 begin
 Result := Hash;
 FullBlocks := Size div BlockSize_32;
 If FullBlocks > 0 then BufferSHA2_32(Result,Buffer,FullBlocks * BlockSize_32);
-{$IFDEF x64}
-LastBlockSize := Size - (FullBlocks * BlockSize_32);
-{$ELSE}
-LastBlockSize := Size - (Int64(FullBlocks) * BlockSize_32);
-{$ENDIF}
-HelpBlocks := Ceil((LastBlockSize + SizeOf(QuadWord) + 1) / BlockSize_32);
+LastBlockSize := Size - (UInt64(FullBlocks) * BlockSize_32);
+HelpBlocks := Ceil((LastBlockSize + SizeOf(UInt64) + 1) / BlockSize_32);
 HelpBlocksBuff := AllocMem(HelpBlocks * BlockSize_32);
 try
   Move({%H-}Pointer({%H-}PtrUInt(@Buffer) + (FullBlocks * BlockSize_32))^,HelpBlocksBuff^,LastBlockSize);
-  {%H-}PByte({%H-}PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
-  {$IFDEF x64}
-  {%H-}PQuadWord({%H-}PtrUInt(HelpBlocksBuff) + (HelpBlocks * BlockSize_32) - SizeOf(QuadWord))^ := EndianSwap(MessageLength);
-  {$ELSE}
-  {%H-}PQuadWord({%H-}PtrUInt(HelpBlocksBuff) + (Int64(HelpBlocks) * BlockSize_32) - SizeOf(QuadWord))^ := EndianSwap(MessageLength);
-  {$ENDIF}
+  {%H-}PUInt8({%H-}PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
+  {%H-}PUInt64({%H-}PtrUInt(HelpBlocksBuff) + (UInt64(HelpBlocks) * BlockSize_32) - SizeOf(UInt64))^ := EndianSwap(MessageLength);
   BufferSHA2_32(Result,HelpBlocksBuff^,HelpBlocks * BlockSize_32);
 finally
   FreeMem(HelpBlocksBuff,HelpBlocks * BlockSize_32);
@@ -1144,31 +1128,23 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2_64(Hash: TSHA2Hash_64; const Buffer; Size: TSize; MessageLength: OctaWord): TSHA2Hash_64;
+Function LastBufferSHA2_64(Hash: TSHA2Hash_64; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_64;
 var
-  FullBlocks:     TSize;
-  LastBlockSize:  TSize;
-  HelpBlocks:     TSize;
+  FullBlocks:     TMemSize;
+  LastBlockSize:  TMemSize;
+  HelpBlocks:     TMemSize;
   HelpBlocksBuff: Pointer;
 begin
 Result := Hash;
 FullBlocks := Size div BlockSize_64;
 If FullBlocks > 0 then BufferSHA2_64(Result,Buffer,FullBlocks * BlockSize_64);
-{$IFDEF x64}
-LastBlockSize := Size - (FullBlocks * BlockSize_64);
-{$ELSE}
-LastBlockSize := Size - (Int64(FullBlocks) * BlockSize_64);
-{$ENDIF}
+LastBlockSize := Size - (UInt64(FullBlocks) * BlockSize_64);
 HelpBlocks := Ceil((LastBlockSize + SizeOf(OctaWord) + 1) / BlockSize_64);
 HelpBlocksBuff := AllocMem(HelpBlocks * BlockSize_64);
 try
   Move({%H-}Pointer({%H-}PtrUInt(@Buffer) + (FullBlocks * BlockSize_64))^,HelpBlocksBuff^,LastBlockSize);
-  {%H-}PByte({%H-}PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
-  {$IFDEF x64}
-  {%H-}POctaWord({%H-}PtrUInt(HelpBlocksBuff) + (HelpBlocks * BlockSize_64) - SizeOf(OctaWord))^ := EndianSwap(MessageLength);
-  {$ELSE}
-  {%H-}POctaWord({%H-}PtrUInt(HelpBlocksBuff) + (Int64(HelpBlocks) * BlockSize_64) - SizeOf(OctaWord))^ := EndianSwap(MessageLength);
-  {$ENDIF}
+  {%H-}PUInt8({%H-}PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
+  {%H-}POctaWord({%H-}PtrUInt(HelpBlocksBuff) + (UInt64(HelpBlocks) * BlockSize_64) - SizeOf(OctaWord))^ := EndianSwap(MessageLength);
   BufferSHA2_64(Result,HelpBlocksBuff^,HelpBlocks * BlockSize_64);
 finally
   FreeMem(HelpBlocksBuff,HelpBlocks * BlockSize_64);
@@ -1177,105 +1153,105 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_224; const Buffer; Size: TSize; MessageLength: QuadWord): TSHA2Hash_224;
+Function LastBufferSHA2(Hash: TSHA2Hash_224; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2Hash_224;
 begin
 Result := TSHA2Hash_224(LastBufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size,MessageLength));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_256; const Buffer; Size: TSize; MessageLength: QuadWord): TSHA2Hash_256;
+Function LastBufferSHA2(Hash: TSHA2Hash_256; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2Hash_256;
 begin
 Result := TSHA2Hash_256(LastBufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size,MessageLength));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TSize; MessageLength: OctaWord): TSHA2Hash_384;
+Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_384;
 begin
 Result := TSHA2Hash_384(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,MessageLength));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TSize; MessageLength: OctaWord): TSHA2Hash_512;
+Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_512;
 begin
 Result := TSHA2Hash_512(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,MessageLength));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TSize; MessageLength: OctaWord): TSHA2Hash_512_224;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_512_224;
 begin
 Result := TSHA2Hash_512_224(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,MessageLength));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TSize; MessageLength: OctaWord): TSHA2Hash_512_256;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_512_256;
 begin
 Result := TSHA2Hash_512_256(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,MessageLength));
 end;
 
 //==============================================================================
 
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TSize; MessageLengthLo: QuadWord): TSHA2Hash_384;
+Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_384;
 begin
 Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,0));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TSize; MessageLengthLo: QuadWord): TSHA2Hash_512;
+Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_512;
 begin
 Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,0));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TSize; MessageLengthLo: QuadWord): TSHA2Hash_512_224;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_512_224;
 begin
 Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,0));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TSize; MessageLengthLo: QuadWord): TSHA2Hash_512_256;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_512_256;
 begin
 Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,0));
 end;
 
 //==============================================================================
 
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TSize; MessageLengthLo, MessageLengthHi: QuadWord): TSHA2Hash_384;
+Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_384;
 begin
 Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TSize; MessageLengthLo, MessageLengthHi: QuadWord): TSHA2Hash_512;
+Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_512;
 begin
 Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TSize; MessageLengthLo, MessageLengthHi: QuadWord): TSHA2Hash_512_224;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_512_224;
 begin
 Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TSize; MessageLengthLo, MessageLengthHi: QuadWord): TSHA2Hash_512_256;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_512_256;
 begin
 Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
 end;
 
 //==============================================================================
 
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TSize; MessageLength: QuadWord): TSHA2Hash;
+Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2Hash;
 begin
 Result.HashSize := Hash.HashSize;
 case Hash.HashSize of
@@ -1286,13 +1262,13 @@ case Hash.HashSize of
   sha512_224: Result.Hash512_224 := LastBufferSHA2(Hash.Hash512_224,Buffer,Size,BuildOctaWord(MessageLength,0));
   sha512_256: Result.Hash512_256 := LastBufferSHA2(Hash.Hash512_256,Buffer,Size,BuildOctaWord(MessageLength,0));
 else
-  raise Exception.CreateFmt('LastBufferSHA2: Unknown hash size (%d)',[Integer(Hash.HashSize)]);
+  raise Exception.CreateFmt('LastBufferSHA2: Unknown hash size (%d)',[Ord(Hash.HashSize)]);
 end;
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TSize; MessageLengthLo, MessageLengthHi: QuadWord): TSHA2Hash;
+Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash;
 begin
 Result.HashSize := Hash.HashSize;
 case Hash.HashSize of
@@ -1303,13 +1279,13 @@ case Hash.HashSize of
   sha512_224: Result.Hash512_224 := LastBufferSHA2(Hash.Hash512_224,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
   sha512_256: Result.Hash512_256 := LastBufferSHA2(Hash.Hash512_256,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
 else
-  raise Exception.CreateFmt('LastBufferSHA2: Unknown hash size (%d)',[Integer(Hash.HashSize)]);
+  raise Exception.CreateFmt('LastBufferSHA2: Unknown hash size (%d)',[Ord(Hash.HashSize)]);
 end;
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TSize; MessageLength: OctaWord): TSHA2Hash;
+Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash;
 begin
 Result.HashSize := Hash.HashSize;
 case Hash.HashSize of
@@ -1320,55 +1296,55 @@ case Hash.HashSize of
   sha512_224: Result.Hash512_224 := LastBufferSHA2(Hash.Hash512_224,Buffer,Size,MessageLength);
   sha512_256: Result.Hash512_256 := LastBufferSHA2(Hash.Hash512_256,Buffer,Size,MessageLength);
 else
-  raise Exception.CreateFmt('LastBufferSHA2: Unknown hash size (%d)',[Integer(Hash.HashSize)]);
+  raise Exception.CreateFmt('LastBufferSHA2: Unknown hash size (%d)',[Ord(Hash.HashSize)]);
 end;
 end;
 
 //==============================================================================
 
-Function LastBufferSHA2(Hash: TSHA2Hash_224; const Buffer; Size: TSize): TSHA2Hash_224;
+Function LastBufferSHA2(Hash: TSHA2Hash_224; const Buffer; Size: TMemSize): TSHA2Hash_224;
 begin
-Result := TSHA2Hash_224(LastBufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size,QuadWord(Size shl 3)));
+Result := TSHA2Hash_224(LastBufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size,UInt64(Size) shl 3));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_256; const Buffer; Size: TSize): TSHA2Hash_256;
+Function LastBufferSHA2(Hash: TSHA2Hash_256; const Buffer; Size: TMemSize): TSHA2Hash_256;
 begin
-Result := TSHA2Hash_256(LastBufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size,QuadWord(Size shl 3)));
+Result := TSHA2Hash_256(LastBufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size,UInt64(Size) shl 3));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TSize): TSHA2Hash_384;
+Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize): TSHA2Hash_384;
 begin
 Result := TSHA2Hash_384(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,SizeToMessageLength(Size)));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TSize): TSHA2Hash_512;
+Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize): TSHA2Hash_512;
 begin
 Result := TSHA2Hash_512(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,SizeToMessageLength(Size)));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TSize): TSHA2Hash_512_224;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize): TSHA2Hash_512_224;
 begin
 Result := TSHA2Hash_512_224(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,SizeToMessageLength(Size)));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TSize): TSHA2Hash_512_256;
+Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize): TSHA2Hash_512_256;
 begin
 Result := TSHA2Hash_512_256(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,SizeToMessageLength(Size)));
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TSize): TSHA2Hash;
+Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize): TSHA2Hash;
 begin
 Result.HashSize := Hash.HashSize;
 case Hash.HashSize of
@@ -1379,7 +1355,7 @@ case Hash.HashSize of
   sha512_224: Result.Hash512_224 := LastBufferSHA2(Hash.Hash512_224,Buffer,Size);
   sha512_256: Result.Hash512_256 := LastBufferSHA2(Hash.Hash512_256,Buffer,Size);
 else
-  raise Exception.CreateFmt('LastBufferSHA2: Unknown hash size (%d)',[Integer(Hash.HashSize)]);
+  raise Exception.CreateFmt('LastBufferSHA2: Unknown hash size (%d)',[Ord(Hash.HashSize)]);
 end;
 end;
 
@@ -1387,7 +1363,7 @@ end;
 //------------------------------------------------------------------------------
 //==============================================================================
 
-Function BufferSHA2(HashSize: TSHA2HashSize; const Buffer; Size: TSize): TSHA2Hash;
+Function BufferSHA2(HashSize: TSHA2HashSize; const Buffer; Size: TMemSize): TSHA2Hash;
 begin
 Result.HashSize := HashSize;
 case HashSize of
@@ -1398,76 +1374,37 @@ case HashSize of
   sha512_224: Result.Hash512_224 := LastBufferSHA2(InitialSHA2_512_224,Buffer,Size);
   sha512_256: Result.Hash512_256 := LastBufferSHA2(InitialSHA2_512_256,Buffer,Size);
 else
-  raise Exception.CreateFmt('BufferSHA2: Unknown hash size (%d)',[Integer(HashSize)]);
+  raise Exception.CreateFmt('BufferSHA2: Unknown hash size (%d)',[Ord(HashSize)]);
 end;
 end;
 
 //==============================================================================
 
 Function AnsiStringSHA2(HashSize: TSHA2HashSize; const Str: AnsiString): TSHA2Hash;
-{$IFDEF UseStringStream}
-var
-  StringStream: TStringStream;
-begin
-StringStream := TStringStream.Create(Str);
-try
-  Result := StreamSHA2(HashSize,StringStream);
-finally
-  StringStream.Free;
-end;
-end;
-{$ELSE}
 begin
 Result := BufferSHA2(HashSize,PAnsiChar(Str)^,Length(Str) * SizeOf(AnsiChar));
 end;
-{$ENDIF}
 
 //------------------------------------------------------------------------------
 
 Function WideStringSHA2(HashSize: TSHA2HashSize; const Str: WideString): TSHA2Hash;
-{$IFDEF UseStringStream}
-var
-  StringStream: TStringStream;
-begin
-StringStream := TStringStream.Create(Str);
-try
-  Result := StreamSHA2(HashSize,StringStream);
-finally
-  StringStream.Free;
-end;
-end;
-{$ELSE}
 begin
 Result := BufferSHA2(HashSize,PWideChar(Str)^,Length(Str) * SizeOf(WideChar));
 end;
-{$ENDIF}
 
 //------------------------------------------------------------------------------
 
 Function StringSHA2(HashSize: TSHA2HashSize; const Str: String): TSHA2Hash;
-{$IFDEF UseStringStream}
-var
-  StringStream: TStringStream;
-begin
-StringStream := TStringStream.Create(Str);
-try
-  Result := StreamSHA2(HashSize,StringStream);
-finally
-  StringStream.Free;
-end;
-end;
-{$ELSE}
 begin
 Result := BufferSHA2(HashSize,PChar(Str)^,Length(Str) * SizeOf(Char));
 end;
-{$ENDIF}
 
 //==============================================================================
 
 Function StreamSHA2(HashSize: TSHA2HashSize; Stream: TStream; Count: Int64 = -1): TSHA2Hash;
 var
   Buffer:         Pointer;
-  BytesRead:      TSize;
+  BytesRead:      TMemSize;
   MessageLength:  OctaWord;
 begin
 If Assigned(Stream) then
@@ -1479,7 +1416,7 @@ If Assigned(Stream) then
         Stream.Position := 0;
         Count := Stream.Size;
       end;
-    MessageLength := SizeToMessageLength(QuadWord(Count));
+    MessageLength := SizeToMessageLength(UInt64(Count));
     GetMem(Buffer,BufferSize);
     try
       Result.HashSize := HashSize;
@@ -1491,11 +1428,11 @@ If Assigned(Stream) then
         sha512_224: Result.Hash512_224 := InitialSHA2_512_224;
         sha512_256: Result.Hash512_256 := InitialSHA2_512_256;
       else
-        raise Exception.CreateFmt('StreamSHA2: Unknown hash size (%d)',[Integer(HashSize)]);
+        raise Exception.CreateFmt('StreamSHA2: Unknown hash size (%d)',[Ord(HashSize)]);
       end;
       repeat
         BytesRead := Stream.Read(Buffer^,Min(BufferSize,Count));
-        If QuadWord(BytesRead) < BufferSize then
+        If BytesRead < BufferSize then
           Result := LastBufferSHA2(Result,Buffer^,BytesRead,MessageLength)
         else
           BufferSHA2(Result,Buffer^,BytesRead);
@@ -1540,7 +1477,7 @@ with PSHA2Context_Internal(Result)^ do
       sha512_224: MessageHash.Hash512_224 := InitialSHA2_512_224;
       sha512_256: MessageHash.Hash512_256 := InitialSHA2_512_256;
     else
-      raise Exception.CreateFmt('SHA2_Hash: Unknown hash size (%d)',[Integer(HashSize)]);
+      raise Exception.CreateFmt('SHA2_Hash: Unknown hash size (%d)',[Ord(HashSize)]);
     end;
     If HashSize in [sha224,sha256] then
       ActiveBlockSize := BlockSize_32
@@ -1553,10 +1490,10 @@ end;
 
 //------------------------------------------------------------------------------
 
-procedure SHA2_Update(Context: TSHA2Context; const Buffer; Size: TSize);
+procedure SHA2_Update(Context: TSHA2Context; const Buffer; Size: TMemSize);
 var
-  FullBlocks:     TSize;
-  RemainingSize:  TSize;
+  FullBlocks:     TMemSize;
+  RemainingSize:  TMemSize;
 begin
 with PSHA2Context_Internal(Context)^ do
   begin
@@ -1564,7 +1501,7 @@ with PSHA2Context_Internal(Context)^ do
       begin
         If Size >= (ActiveBlockSize - TransferSize) then
           begin
-            IncOW(MessageLength,SizeToMessageLength(ActiveBlockSize - TransferSize));
+            IncOctaWord(MessageLength,SizeToMessageLength(ActiveBlockSize - TransferSize));
             Move(Buffer,TransferBuffer[TransferSize],ActiveBlockSize - TransferSize);
             BufferSHA2(MessageHash,TransferBuffer,ActiveBlockSize);
             RemainingSize := Size - (ActiveBlockSize - TransferSize);
@@ -1573,23 +1510,19 @@ with PSHA2Context_Internal(Context)^ do
           end
         else
           begin
-            IncOW(MessageLength,SizeToMessageLength(Size));
+            IncOctaWord(MessageLength,SizeToMessageLength(Size));
             Move(Buffer,TransferBuffer[TransferSize],Size);
             Inc(TransferSize,Size);
           end;  
       end
     else
       begin
-        IncOW(MessageLength,SizeToMessageLength(Size));
+        IncOctaWord(MessageLength,SizeToMessageLength(Size));
         FullBlocks := Size div ActiveBlockSize;
         BufferSHA2(MessageHash,Buffer,FullBlocks * ActiveBlockSize);
         If (FullBlocks * ActiveBlockSize) < Size then
           begin
-            {$IFDEF x64}
-            TransferSize := Size - (FullBlocks * ActiveBlockSize);
-            {$ELSE}
-            TransferSize := Size - (Int64(FullBlocks) * ActiveBlockSize);
-            {$ENDIF}
+            TransferSize := Size - (UInt64(FullBlocks) * ActiveBlockSize);
             Move({%H-}Pointer({%H-}PtrUInt(@Buffer) + (Size - TransferSize))^,TransferBuffer,TransferSize);
           end;
       end;
@@ -1598,7 +1531,7 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function SHA2_Final(var Context: TSHA2Context; const Buffer; Size: TSize): TSHA2Hash;
+Function SHA2_Final(var Context: TSHA2Context; const Buffer; Size: TMemSize): TSHA2Hash;
 begin
 SHA2_Update(Context,Buffer,Size);
 Result := SHA2_Final(Context);
@@ -1616,7 +1549,7 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function SHA2_Hash(HashSize: TSHA2HashSize; const Buffer; Size: TSize): TSHA2Hash;
+Function SHA2_Hash(HashSize: TSHA2HashSize; const Buffer; Size: TMemSize): TSHA2Hash;
 begin
 Result.HashSize := HashSize;
 case HashSize of
@@ -1627,7 +1560,7 @@ case HashSize of
   sha512_224: Result.Hash512_224 := InitialSHA2_512_224;
   sha512_256: Result.Hash512_256 := InitialSHA2_512_256;
 else
-  raise Exception.CreateFmt('SHA2_Hash: Unknown hash size (%d)',[Integer(HashSize)]);
+  raise Exception.CreateFmt('SHA2_Hash: Unknown hash size (%d)',[Ord(HashSize)]);
 end;
 Result := LastBufferSHA2(Result,Buffer,Size,SizeToMessageLength(Size));
 end;
