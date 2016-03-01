@@ -9,9 +9,9 @@
 
   SHA2 Hash Calculation
 
-  ©František Milt 2015-12-15
+  ©František Milt 2016-03-01
 
-  Version 1.0.2
+  Version 1.0.3
 
   Following hash sizes are supported in current implementation:
     SHA-224
@@ -291,7 +291,14 @@ Function SHA2_Hash(HashSize: TSHA2HashSize; const Buffer; Size: TMemSize): TSHA2
 implementation
 
 uses
-  SysUtils, Math;
+  SysUtils, Math
+  {$IF Defined(FPC) and not Defined(Unicode)}
+  (*
+    If compiler throws error that LazUTF8 unit cannot be found, you have to
+    add LazUtils to required packages (Project > Project Inspector).
+  *)
+  , LazUTF8
+  {$IFEND};
 
 const
   BlockSize_32    = 64;                             // 512 bits
@@ -1451,7 +1458,11 @@ Function FileSHA2(HashSize: TSHA2HashSize; const FileName: String): TSHA2Hash;
 var
   FileStream: TFileStream;
 begin
+{$IF Defined(FPC) and not Defined(Unicode)}
+FileStream := TFileStream.Create(UTF8ToSys(FileName), fmOpenRead or fmShareDenyWrite);
+{$ELSE}
 FileStream := TFileStream.Create(FileName, fmOpenRead or fmShareDenyWrite);
+{$IFEND}
 try
   Result := StreamSHA2(HashSize,FileStream);
 finally
