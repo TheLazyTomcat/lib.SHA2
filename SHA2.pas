@@ -9,9 +9,9 @@
 
   SHA2 Hash Calculation
 
-  ©František Milt 2016-03-01
+  ©František Milt 2016-07-30
 
-  Version 1.0.3
+  Version 1.0.4
 
   Following hash sizes are supported in current implementation:
     SHA-224
@@ -227,6 +227,14 @@ Function SameSHA2(A,B: TSHA2Hash_512_224): Boolean; overload;
 Function SameSHA2(A,B: TSHA2Hash_512_256): Boolean; overload;
 Function SameSHA2(A,B: TSHA2Hash): Boolean; overload;
 
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_224): TSHA2Hash_224; overload;
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_256): TSHA2Hash_256; overload;
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_384): TSHA2Hash_384; overload;
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_512): TSHA2Hash_512; overload;
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_512_224): TSHA2Hash_512_224; overload;
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_512_256): TSHA2Hash_512_256; overload;
+Function BinaryCorrectSHA2(Hash: TSHA2Hash): TSHA2Hash; overload;
+
 //------------------------------------------------------------------------------
 
 procedure BufferSHA2(var Hash: TSHA2Hash_224; const Buffer; Size: TMemSize); overload;
@@ -291,7 +299,7 @@ Function SHA2_Hash(HashSize: TSHA2HashSize; const Buffer; Size: TMemSize): TSHA2
 implementation
 
 uses
-  SysUtils, Math
+  SysUtils, Math, BitOps
   {$IF Defined(FPC) and not Defined(Unicode)}
   (*
     If compiler throws error that LazUTF8 unit cannot be found, you have to
@@ -359,117 +367,11 @@ type
 
 //==============================================================================
 
-Function EndianSwap(Value: UInt32): UInt32; register; overload; {$IFNDEF PurePascal} assembler;
-asm
-{$IFDEF x64}
-    MOV   RAX,  RCX
-{$ENDIF}
-    BSWAP EAX
-end;
-{$ELSE}
-begin
-Result := UInt32((Value and $000000FF shl 24) or (Value and $0000FF00 shl 8) or
-                 (Value and $00FF0000 shr 8) or (Value and $FF000000 shr 24));
-end;
-{$ENDIF}
-      
-//------------------------------------------------------------------------------
-
-Function EndianSwap(Value: UInt64): UInt64; register; overload; {$IFNDEF PurePascal}assembler;
-asm
-{$IFDEF x64}
-    MOV   RAX,  RCX
-    BSWAP RAX
-{$ELSE}
-    MOV   EAX,  dword ptr [Value + 4]
-    MOV   EDX,  dword ptr [Value]
-    BSWAP EAX
-    BSWAP EDX
-{$ENDIF}
-end;
-{$ELSE}
-begin
-Int64Rec(Result).Hi := EndianSwap(Int64Rec(Value).Lo);
-Int64Rec(Result).Lo := EndianSwap(Int64Rec(Value).Hi);
-end;
-{$ENDIF}
-
-//------------------------------------------------------------------------------
-
 Function EndianSwap(Value: OctaWord): OctaWord; overload;
 begin
 Result.Hi := EndianSwap(Value.Lo);
 Result.Lo := EndianSwap(Value.Hi);
 end;
-
-//------------------------------------------------------------------------------
-
-Function RightRotate(Value: UInt32; Shift: Byte): UInt32; register; overload; {$IFNDEF PurePascal}assembler;
-asm
-{$IFDEF x64}
-    MOV   EAX,  ECX
-{$ENDIF}
-    MOV   CL,   DL
-    ROR   EAX,  CL
-end;
-{$ELSE}
-begin
-Shift := Shift and $1F;
-Result := UInt32((Value shr Shift) or (Value shl (32 - Shift)));
-end;
-{$ENDIF}
-
-//------------------------------------------------------------------------------
-
-Function RightRotate(Value: UInt64; Shift: Byte): UInt64; register; overload; {$IFNDEF PurePascal}assembler;
-asm
-{$IFDEF x64}
-    MOV   RAX,  RCX
-    MOV   CL,   DL
-    ROR   RAX,  CL
-{$ELSE}
-    MOV   ECX,  EAX
-    AND   ECX,  $3F
-    CMP   ECX,  32
-
-    JAE   @Above31
-
-  @Below32:
-    MOV   EAX,  dword ptr [Value]
-    MOV   EDX,  dword ptr [Value + 4]
-    CMP   ECX,  0
-    JE    @FuncEnd
-
-    MOV   dword ptr [Value],  EDX
-    JMP   @Rotate
-
-  @Above31:
-    MOV   EDX,  dword ptr [Value]
-    MOV   EAX,  dword ptr [Value + 4]
-    JE    @FuncEnd
-
-    AND   ECX,  $1F
-
-  @Rotate:
-    SHRD  EDX,  EAX, CL
-    SHR   EAX,  CL
-    PUSH  EAX
-    MOV   EAX,  dword ptr [Value]
-    XOR   CL,   31
-    INC   CL
-    SHL   EAX,  CL
-    POP   ECX
-    OR    EAX,  ECX
-
-  @FuncEnd:
-{$ENDIF}
-end;
-{$ELSE}
-begin
-Shift := Shift and $3F;
-Result := UInt64((Value shr Shift) or (Value shl (64 - Shift)));
-end;
-{$ENDIF}
 
 //------------------------------------------------------------------------------
 
@@ -509,13 +411,13 @@ Result := Hash;
 For i := 0 to 15 do Schedule[i] := EndianSwap(BlockWords[i]);
 {$IFDEF OverflowCheck}{$Q-}{$ENDIF}
 For i := 16 to 63 do
-  Schedule[i] := UInt32(Schedule[i - 16] + (RightRotate(Schedule[i - 15],7) xor RightRotate(Schedule[i - 15],18) xor (Schedule[i - 15] shr 3)) +
-                        Schedule[i - 7] + (RightRotate(Schedule[i - 2],17) xor RightRotate(Schedule[i - 2],19) xor (Schedule[i - 2] shr 10)));
+  Schedule[i] := UInt32(Schedule[i - 16] + (ROR(Schedule[i - 15],7) xor ROR(Schedule[i - 15],18) xor (Schedule[i - 15] shr 3)) +
+                        Schedule[i - 7] + (ROR(Schedule[i - 2],17) xor ROR(Schedule[i - 2],19) xor (Schedule[i - 2] shr 10)));
 For i := 0 to 63 do
   begin
-    Temp1 := UInt32(Hash.PartH + (RightRotate(Hash.PartE,6) xor RightRotate(Hash.PartE,11) xor RightRotate(Hash.PartE,25)) +
+    Temp1 := UInt32(Hash.PartH + (ROR(Hash.PartE,6) xor ROR(Hash.PartE,11) xor ROR(Hash.PartE,25)) +
                   ((Hash.PartE and Hash.PartF) xor ((not Hash.PartE) and Hash.PartG)) + RoundConsts_32[i] + Schedule[i]);
-    Temp2 := UInt32((RightRotate(Hash.PartA,2) xor RightRotate(Hash.PartA,13) xor RightRotate(Hash.PartA,22)) +
+    Temp2 := UInt32((ROR(Hash.PartA,2) xor ROR(Hash.PartA,13) xor ROR(Hash.PartA,22)) +
                    ((Hash.PartA and Hash.PartB) xor (Hash.PartA and Hash.PartC) xor (Hash.PartB and Hash.PartC)));
     Hash.PartH := Hash.PartG;
     Hash.PartG := Hash.PartF;
@@ -550,13 +452,13 @@ Result := Hash;
 For i := 0 to 15 do Schedule[i] := EndianSwap(BlockWords[i]);
 {$IFDEF OverflowCheck}{$Q-}{$ENDIF}
 For i := 16 to 79 do
-  Schedule[i] := UInt64(Schedule[i - 16] + (RightRotate(Schedule[i - 15],1) xor RightRotate(Schedule[i - 15],8) xor (Schedule[i - 15] shr 7)) +
-                        Schedule[i - 7] + (RightRotate(Schedule[i - 2],19) xor RightRotate(Schedule[i - 2],61) xor (Schedule[i - 2] shr 6)));
+  Schedule[i] := UInt64(Schedule[i - 16] + (ROR(Schedule[i - 15],1) xor ROR(Schedule[i - 15],8) xor (Schedule[i - 15] shr 7)) +
+                        Schedule[i - 7] + (ROR(Schedule[i - 2],19) xor ROR(Schedule[i - 2],61) xor (Schedule[i - 2] shr 6)));
 For i := 0 to 79 do
   begin
-    Temp1 := UInt64(Hash.PartH + (RightRotate(Hash.PartE,14) xor RightRotate(Hash.PartE,18) xor RightRotate(Hash.PartE,41)) +
+    Temp1 := UInt64(Hash.PartH + (ROR(Hash.PartE,14) xor ROR(Hash.PartE,18) xor ROR(Hash.PartE,41)) +
                   ((Hash.PartE and Hash.PartF) xor ((not Hash.PartE) and Hash.PartG)) + RoundConsts_64[i] + Schedule[i]);
-    Temp2 := UInt64((RightRotate(Hash.PartA,28) xor RightRotate(Hash.PartA,34) xor RightRotate(Hash.PartA,39)) +
+    Temp2 := UInt64((ROR(Hash.PartA,28) xor ROR(Hash.PartA,34) xor ROR(Hash.PartA,39)) +
                    ((Hash.PartA and Hash.PartB) xor (Hash.PartA and Hash.PartC) xor (Hash.PartB and Hash.PartC)));
     Hash.PartH := Hash.PartG;
     Hash.PartG := Hash.PartF;
@@ -1002,6 +904,92 @@ If A.HashSize = B.HashSize then
     raise Exception.CreateFmt('SameSHA2: Unknown hash size (%d)',[Ord(A.HashSize)]);
   end
 else Result := False;
+end;
+
+//==============================================================================
+
+Function BinaryCorrectSHA2_32(Hash: TSHA2Hash_32): TSHA2Hash_32;
+begin
+Result.PartA := EndianSwap(Hash.PartA);
+Result.PartB := EndianSwap(Hash.PartB);
+Result.PartC := EndianSwap(Hash.PartC);
+Result.PartD := EndianSwap(Hash.PartD);
+Result.PartE := EndianSwap(Hash.PartE);
+Result.PartF := EndianSwap(Hash.PartF);
+Result.PartG := EndianSwap(Hash.PartG);
+Result.PartH := EndianSwap(Hash.PartH);
+end;
+
+//------------------------------------------------------------------------------
+
+Function BinaryCorrectSHA2_64(Hash: TSHA2Hash_64): TSHA2Hash_64;
+begin
+Result.PartA := EndianSwap(Hash.PartA);
+Result.PartB := EndianSwap(Hash.PartB);
+Result.PartC := EndianSwap(Hash.PartC);
+Result.PartD := EndianSwap(Hash.PartD);
+Result.PartE := EndianSwap(Hash.PartE);
+Result.PartF := EndianSwap(Hash.PartF);
+Result.PartG := EndianSwap(Hash.PartG);
+Result.PartH := EndianSwap(Hash.PartH);
+end;
+
+//------------------------------------------------------------------------------
+
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_224): TSHA2Hash_224;
+begin
+Result := TSHA2Hash_224(BinaryCorrectSHA2_32(TSHA2Hash_32(Hash)));
+end;
+
+//------------------------------------------------------------------------------
+
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_256): TSHA2Hash_256;
+begin
+Result := TSHA2Hash_256(BinaryCorrectSHA2_32(TSHA2Hash_32(Hash)));
+end;
+ 
+//------------------------------------------------------------------------------
+
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_384): TSHA2Hash_384;
+begin
+Result := TSHA2Hash_384(BinaryCorrectSHA2_64(TSHA2Hash_64(Hash)));
+end;
+ 
+//------------------------------------------------------------------------------
+
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_512): TSHA2Hash_512;
+begin
+Result := TSHA2Hash_512(BinaryCorrectSHA2_64(TSHA2Hash_64(Hash)));
+end;
+ 
+//------------------------------------------------------------------------------
+
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_512_224): TSHA2Hash_512_224;
+begin
+Result := TSHA2Hash_512_224(BinaryCorrectSHA2_64(TSHA2Hash_64(Hash)));
+end;
+ 
+//------------------------------------------------------------------------------
+
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_512_256): TSHA2Hash_512_256;
+begin
+Result := TSHA2Hash_512_256(BinaryCorrectSHA2_64(TSHA2Hash_64(Hash)));
+end;
+ 
+//------------------------------------------------------------------------------
+
+Function BinaryCorrectSHA2(Hash: TSHA2Hash): TSHA2Hash;
+begin
+case Hash.HashSize of
+  sha224:     Result.Hash224 := BinaryCorrectSHA2(Hash.Hash224);
+  sha256:     Result.Hash256 := BinaryCorrectSHA2(Hash.Hash256);
+  sha384:     Result.Hash384 := BinaryCorrectSHA2(Hash.Hash384);
+  sha512:     Result.Hash512 := BinaryCorrectSHA2(Hash.Hash512);
+  sha512_224: Result.Hash512_224 := BinaryCorrectSHA2(Hash.Hash512_224);
+  sha512_256: Result.Hash512_256 := BinaryCorrectSHA2(Hash.Hash512_256);
+else
+  raise Exception.CreateFmt('BinaryCorrectSHA2: Unknown hash size (%d)',[Ord(Hash.HashSize)]);
+end;
 end;
 
 //==============================================================================
