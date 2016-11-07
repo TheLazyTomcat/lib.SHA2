@@ -34,13 +34,19 @@ unit SHA2;
   {$DEFINE OverflowCheck}
 {$ENDIF}
 
+{$IFDEF FPC}
+  {$MODE ObjFPC}{$H+}
+  // Activate symbol BARE_FPC if you want to compile this unit outside of Lazarus.
+  {.$DEFINE BARE_FPC}
+{$ENDIF}
+
 interface
 
 uses
   Classes, AuxTypes;
 
 type
-  TOctaWord = record
+TOctaWord = record
     case Integer of
       0:(Lo,Hi:   UInt64);
       1:(Bytes:   array[0..15] of UInt8);
@@ -285,7 +291,7 @@ implementation
 
 uses
   SysUtils, Math, BitOps
-  {$IF Defined(FPC) and not Defined(Unicode)}
+  {$IF Defined(FPC) and not Defined(Unicode) and not Defined(BARE_FPC)}
   (*
     If compiler throws error that LazUTF8 unit cannot be found, you have to
     add LazUtils to required packages (Project > Project Inspector).
@@ -1431,7 +1437,7 @@ Function FileSHA2(HashSize: TSHA2HashSize; const FileName: String): TSHA2Hash;
 var
   FileStream: TFileStream;
 begin
-{$IF Defined(FPC) and not Defined(Unicode)}
+{$IF Defined(FPC) and not Defined(Unicode) and not Defined(BARE_FPC)}
 FileStream := TFileStream.Create(UTF8ToSys(FileName), fmOpenRead or fmShareDenyWrite);
 {$ELSE}
 FileStream := TFileStream.Create(FileName, fmOpenRead or fmShareDenyWrite);
