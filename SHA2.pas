@@ -21,6 +21,10 @@
     SHA-512/224
     SHA-512/256
 
+  Dependencies:
+    AuxTypes - github.com/ncs-sniper/Lib.AuxTypes
+    BitOps   - github.com/ncs-sniper/Lib.BitOps
+
 ===============================================================================}
 unit SHA2;
 
