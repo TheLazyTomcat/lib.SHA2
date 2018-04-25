@@ -44,6 +44,7 @@ unit SHA2;
 
 {$IFDEF FPC}
   {$MODE ObjFPC}{$H+}
+  {$DEFINE FPC_DisableWarns}
 {$ENDIF}
 
 interface
@@ -297,6 +298,11 @@ implementation
 
 uses
   SysUtils, Math, BitOps, StrRect;
+
+{$IFDEF FPC_DisableWarns}
+  {$WARN 4055 OFF} // Conversion between ordinals and pointers is not portable
+  {$WARN 4056 OFF} // Conversion between ordinals and pointers is not portable
+{$ENDIF}
 
 const
   BlockSize_32    = 64;                             // 512 bits
@@ -1102,9 +1108,9 @@ LastBlockSize := Size - (UInt64(FullBlocks) * BlockSize_32);
 HelpBlocks := Ceil((LastBlockSize + SizeOf(UInt64) + 1) / BlockSize_32);
 HelpBlocksBuff := AllocMem(HelpBlocks * BlockSize_32);
 try
-  Move({%H-}Pointer({%H-}PtrUInt(@Buffer) + (FullBlocks * BlockSize_32))^,HelpBlocksBuff^,LastBlockSize);
-  {%H-}PUInt8({%H-}PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
-  {%H-}PUInt64({%H-}PtrUInt(HelpBlocksBuff) + (UInt64(HelpBlocks) * BlockSize_32) - SizeOf(UInt64))^ := EndianSwap(MessageLength);
+  Move(Pointer(PtrUInt(@Buffer) + (FullBlocks * BlockSize_32))^,HelpBlocksBuff^,LastBlockSize);
+  PUInt8(PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
+  PUInt64(PtrUInt(HelpBlocksBuff) + (UInt64(HelpBlocks) * BlockSize_32) - SizeOf(UInt64))^ := EndianSwap(MessageLength);
   BufferSHA2_32(Result,HelpBlocksBuff^,HelpBlocks * BlockSize_32);
 finally
   FreeMem(HelpBlocksBuff,HelpBlocks * BlockSize_32);
@@ -1127,9 +1133,9 @@ LastBlockSize := Size - (UInt64(FullBlocks) * BlockSize_64);
 HelpBlocks := Ceil((LastBlockSize + SizeOf(OctaWord) + 1) / BlockSize_64);
 HelpBlocksBuff := AllocMem(HelpBlocks * BlockSize_64);
 try
-  Move({%H-}Pointer({%H-}PtrUInt(@Buffer) + (FullBlocks * BlockSize_64))^,HelpBlocksBuff^,LastBlockSize);
-  {%H-}PUInt8({%H-}PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
-  {%H-}POctaWord({%H-}PtrUInt(HelpBlocksBuff) + (UInt64(HelpBlocks) * BlockSize_64) - SizeOf(OctaWord))^ := EndianSwap(MessageLength);
+  Move(Pointer(PtrUInt(@Buffer) + (FullBlocks * BlockSize_64))^,HelpBlocksBuff^,LastBlockSize);
+  PUInt8(PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
+  POctaWord(PtrUInt(HelpBlocksBuff) + (UInt64(HelpBlocks) * BlockSize_64) - SizeOf(OctaWord))^ := EndianSwap(MessageLength);
   BufferSHA2_64(Result,HelpBlocksBuff^,HelpBlocks * BlockSize_64);
 finally
   FreeMem(HelpBlocksBuff,HelpBlocks * BlockSize_64);
@@ -1491,7 +1497,7 @@ with PSHA2Context_Internal(Context)^ do
             BufferSHA2(MessageHash,TransferBuffer,ActiveBlockSize);
             RemainingSize := Size - (ActiveBlockSize - TransferSize);
             TransferSize := 0;
-            SHA2_Update(Context,{%H-}Pointer({%H-}PtrUInt(@Buffer) + (Size - RemainingSize))^,RemainingSize)
+            SHA2_Update(Context,Pointer(PtrUInt(@Buffer) + (Size - RemainingSize))^,RemainingSize)
           end
         else
           begin
@@ -1508,7 +1514,7 @@ with PSHA2Context_Internal(Context)^ do
         If (FullBlocks * ActiveBlockSize) < Size then
           begin
             TransferSize := Size - (UInt64(FullBlocks) * ActiveBlockSize);
-            Move({%H-}Pointer({%H-}PtrUInt(@Buffer) + (Size - TransferSize))^,TransferBuffer,TransferSize);
+            Move(Pointer(PtrUInt(@Buffer) + (Size - TransferSize))^,TransferBuffer,TransferSize);
           end;
       end;
   end;
