@@ -45,6 +45,7 @@ unit SHA2;
 {$IFDEF FPC}
   {$MODE ObjFPC}{$H+}
   {$DEFINE FPC_DisableWarns}
+  {$MACRO ON}
 {$ENDIF}
 
 interface
@@ -300,11 +301,16 @@ uses
   SysUtils, Math, BitOps, StrRect;
 
 {$IFDEF FPC_DisableWarns}
-  {$WARN 4055 OFF} // Conversion between ordinals and pointers is not portable
-  {$WARN 4056 OFF} // Conversion between ordinals and pointers is not portable
+  {$DEFINE FPCDWM}
+  {$DEFINE W4055:={$WARN 4055 OFF}} // Conversion between ordinals and pointers is not portable
+  {$DEFINE W4056:={$WARN 4056 OFF}} // Conversion between ordinals and pointers is not portable
+  {$PUSH}{$WARN 2005 OFF} // Comment level $1 found
   {$IF Defined(FPC) and (FPC_FULLVERSION >= 30000)}
-    {$WARN 5092 OFF} // Variable "$1" of a managed type does not seem to be initialized
+    {$DEFINE W5092:={$WARN 5092 OFF}} // Variable "$1" of a managed type does not seem to be initialized
+  {$ELSE}
+    {$DEFINE W5092:=}
   {$IFEND}
+  {$POP}
 {$ENDIF}
 
 const
@@ -591,6 +597,7 @@ end;
 
 //==============================================================================
 
+{$IFDEF FPCDWM}{$PUSH}W5092{$ENDIF}
 Function StrToSHA2_32(Str: String; Bits: Integer): TSHA2Hash_32;
 var
   Characters: Integer;
@@ -607,9 +614,11 @@ Str := Str + StringOfChar('0',64 - Length(Str));
 For i := 0 to 7 do
   HashWords[i] := UInt32(StrToInt('$' + Copy(Str,(i * 8) + 1,8)));
 end;
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
 
 //------------------------------------------------------------------------------
 
+{$IFDEF FPCDWM}{$PUSH}W5092{$ENDIF}
 Function StrToSHA2_64(Str: String; Bits: Integer): TSHA2Hash_64;
 var
   Characters: Integer;
@@ -626,6 +635,7 @@ Str := Str + StringOfChar('0',128 - Length(Str));
 For i := 0 to 7 do
   HashWords[i] := UInt64(StrToInt64('$' + Copy(Str,(i * 16) + 1,16)));
 end;
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
 
 //------------------------------------------------------------------------------
 
@@ -1111,9 +1121,11 @@ LastBlockSize := Size - (UInt64(FullBlocks) * BlockSize_32);
 HelpBlocks := Ceil((LastBlockSize + SizeOf(UInt64) + 1) / BlockSize_32);
 HelpBlocksBuff := AllocMem(HelpBlocks * BlockSize_32);
 try
+{$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
   Move(Pointer(PtrUInt(@Buffer) + (FullBlocks * BlockSize_32))^,HelpBlocksBuff^,LastBlockSize);
   PUInt8(PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
   PUInt64(PtrUInt(HelpBlocksBuff) + (UInt64(HelpBlocks) * BlockSize_32) - SizeOf(UInt64))^ := EndianSwap(MessageLength);
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
   BufferSHA2_32(Result,HelpBlocksBuff^,HelpBlocks * BlockSize_32);
 finally
   FreeMem(HelpBlocksBuff,HelpBlocks * BlockSize_32);
@@ -1136,9 +1148,11 @@ LastBlockSize := Size - (UInt64(FullBlocks) * BlockSize_64);
 HelpBlocks := Ceil((LastBlockSize + SizeOf(OctaWord) + 1) / BlockSize_64);
 HelpBlocksBuff := AllocMem(HelpBlocks * BlockSize_64);
 try
+{$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
   Move(Pointer(PtrUInt(@Buffer) + (FullBlocks * BlockSize_64))^,HelpBlocksBuff^,LastBlockSize);
   PUInt8(PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
   POctaWord(PtrUInt(HelpBlocksBuff) + (UInt64(HelpBlocks) * BlockSize_64) - SizeOf(OctaWord))^ := EndianSwap(MessageLength);
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
   BufferSHA2_64(Result,HelpBlocksBuff^,HelpBlocks * BlockSize_64);
 finally
   FreeMem(HelpBlocksBuff,HelpBlocks * BlockSize_64);
@@ -1500,7 +1514,9 @@ with PSHA2Context_Internal(Context)^ do
             BufferSHA2(MessageHash,TransferBuffer,ActiveBlockSize);
             RemainingSize := Size - (ActiveBlockSize - TransferSize);
             TransferSize := 0;
-            SHA2_Update(Context,Pointer(PtrUInt(@Buffer) + (Size - RemainingSize))^,RemainingSize)
+          {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
+            SHA2_Update(Context,Pointer(PtrUInt(@Buffer) + (Size - RemainingSize))^,RemainingSize);
+          {$IFDEF FPCDWM}{$POP}{$ENDIF}
           end
         else
           begin
@@ -1517,7 +1533,9 @@ with PSHA2Context_Internal(Context)^ do
         If (FullBlocks * ActiveBlockSize) < Size then
           begin
             TransferSize := Size - (UInt64(FullBlocks) * ActiveBlockSize);
+          {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
             Move(Pointer(PtrUInt(@Buffer) + (Size - TransferSize))^,TransferBuffer,TransferSize);
+          {$IFDEF FPCDWM}{$POP}{$ENDIF}
           end;
       end;
   end;
