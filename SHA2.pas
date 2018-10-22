@@ -9,9 +9,9 @@
 
   SHA2 Hash Calculation
 
-  ©František Milt 2017-07-18
+  ©František Milt 2018-10-22
 
-  Version 1.0.5
+  Version 1.0.6
 
   Following hash sizes are supported in current implementation:
     SHA-224
@@ -44,8 +44,16 @@ unit SHA2;
 
 {$IFDEF FPC}
   {$MODE ObjFPC}{$H+}
+  {$INLINE ON}
+  {$DEFINE CanInline}
   {$DEFINE FPC_DisableWarns}
   {$MACRO ON}
+{$ELSE}
+  {$IF CompilerVersion >= 17 then}  // Delphi 2005+
+    {$DEFINE CanInline}
+  {$ELSE}
+    {$UNDEF CanInline}
+  {$IFEND}
 {$ENDIF}
 
 interface
@@ -54,7 +62,7 @@ uses
   Classes, AuxTypes;
 
 type
-TOctaWord = record
+  TOctaWord = record
     case Integer of
       0:(Lo,Hi:   UInt64);
       1:(Bytes:   array[0..15] of UInt8);
@@ -186,20 +194,20 @@ Function InitialSHA2_512_256: TSHA2Hash_512_256;
 
 //------------------------------------------------------------------------------
 
-Function SHA2ToStr(Hash: TSHA2Hash_224): String; overload;
-Function SHA2ToStr(Hash: TSHA2Hash_256): String; overload;
-Function SHA2ToStr(Hash: TSHA2Hash_384): String; overload;
-Function SHA2ToStr(Hash: TSHA2Hash_512): String; overload;
-Function SHA2ToStr(Hash: TSHA2Hash_512_224): String; overload;
-Function SHA2ToStr(Hash: TSHA2Hash_512_256): String; overload;
+Function SHA2ToStr(Hash: TSHA2Hash_224): String; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function SHA2ToStr(Hash: TSHA2Hash_256): String; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function SHA2ToStr(Hash: TSHA2Hash_384): String; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function SHA2ToStr(Hash: TSHA2Hash_512): String; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function SHA2ToStr(Hash: TSHA2Hash_512_224): String; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function SHA2ToStr(Hash: TSHA2Hash_512_256): String; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
 Function SHA2ToStr(Hash: TSHA2Hash): String; overload;
 
-Function StrToSHA2_224(Str: String): TSHA2Hash_224;
-Function StrToSHA2_256(Str: String): TSHA2Hash_256;
-Function StrToSHA2_384(Str: String): TSHA2Hash_384;
-Function StrToSHA2_512(Str: String): TSHA2Hash_512;
-Function StrToSHA2_512_224(Str: String): TSHA2Hash_512_224;
-Function StrToSHA2_512_256(Str: String): TSHA2Hash_512_256;
+Function StrToSHA2_224(Str: String): TSHA2Hash_224;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function StrToSHA2_256(Str: String): TSHA2Hash_256;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function StrToSHA2_384(Str: String): TSHA2Hash_384;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function StrToSHA2_512(Str: String): TSHA2Hash_512;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function StrToSHA2_512_224(Str: String): TSHA2Hash_512_224;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function StrToSHA2_512_256(Str: String): TSHA2Hash_512_256;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
 Function StrToSHA2(HashSize: TSHA2HashSize; Str: String): TSHA2Hash;
 
 Function TryStrToSHA2(const Str: String; out Hash: TSHA2Hash_224): Boolean; overload;
@@ -218,6 +226,14 @@ Function StrToSHA2Def(const Str: String; Default: TSHA2Hash_512_224): TSHA2Hash_
 Function StrToSHA2Def(const Str: String; Default: TSHA2Hash_512_256): TSHA2Hash_512_256; overload;
 Function StrToSHA2Def(HashSize: TSHA2HashSize; const Str: String; Default: TSHA2Hash): TSHA2Hash; overload;
 
+Function CompareSHA2(A,B: TSHA2Hash_224): Integer; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function CompareSHA2(A,B: TSHA2Hash_256): Integer; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function CompareSHA2(A,B: TSHA2Hash_384): Integer; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function CompareSHA2(A,B: TSHA2Hash_512): Integer; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function CompareSHA2(A,B: TSHA2Hash_512_224): Integer; overload;
+Function CompareSHA2(A,B: TSHA2Hash_512_256): Integer; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function CompareSHA2(A,B: TSHA2Hash): Integer; overload;
+
 Function SameSHA2(A,B: TSHA2Hash_224): Boolean; overload;
 Function SameSHA2(A,B: TSHA2Hash_256): Boolean; overload;
 Function SameSHA2(A,B: TSHA2Hash_384): Boolean; overload;
@@ -226,12 +242,12 @@ Function SameSHA2(A,B: TSHA2Hash_512_224): Boolean; overload;
 Function SameSHA2(A,B: TSHA2Hash_512_256): Boolean; overload;
 Function SameSHA2(A,B: TSHA2Hash): Boolean; overload;
 
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_224): TSHA2Hash_224; overload;
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_256): TSHA2Hash_256; overload;
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_384): TSHA2Hash_384; overload;
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_512): TSHA2Hash_512; overload;
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_512_224): TSHA2Hash_512_224; overload;
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_512_256): TSHA2Hash_512_256; overload;
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_224): TSHA2Hash_224; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_256): TSHA2Hash_256; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_384): TSHA2Hash_384; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_512): TSHA2Hash_512; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_512_224): TSHA2Hash_512_224; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
+Function BinaryCorrectSHA2(Hash: TSHA2Hash_512_256): TSHA2Hash_512_256; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
 Function BinaryCorrectSHA2(Hash: TSHA2Hash): TSHA2Hash; overload;
 
 //------------------------------------------------------------------------------
@@ -277,9 +293,9 @@ Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize): TSHA2Has
 
 Function BufferSHA2(HashSize: TSHA2HashSize; const Buffer; Size: TMemSize): TSHA2Hash; overload;
 
-Function AnsiStringSHA2(HashSize: TSHA2HashSize; const Str: AnsiString): TSHA2Hash;
-Function WideStringSHA2(HashSize: TSHA2HashSize; const Str: WideString): TSHA2Hash;
-Function StringSHA2(HashSize: TSHA2HashSize; const Str: String): TSHA2Hash;
+Function AnsiStringSHA2(HashSize: TSHA2HashSize; const Str: AnsiString): TSHA2Hash;{$IFDEF CanInline} inline; {$ENDIF}
+Function WideStringSHA2(HashSize: TSHA2HashSize; const Str: WideString): TSHA2Hash;{$IFDEF CanInline} inline; {$ENDIF}
+Function StringSHA2(HashSize: TSHA2HashSize; const Str: String): TSHA2Hash;{$IFDEF CanInline} inline; {$ENDIF}
 
 Function StreamSHA2(HashSize: TSHA2HashSize; Stream: TStream; Count: Int64 = -1): TSHA2Hash;
 Function FileSHA2(HashSize: TSHA2HashSize; const FileName: String): TSHA2Hash;
@@ -501,7 +517,7 @@ Function InitialSHA2_512_224: TSHA2Hash_512_224;
 var
   EvalStr: AnsiString;
 begin
-EvalStr := 'SHA-512/224';
+EvalStr := StrToAnsi('SHA-512/224');
 Result := TSHA2Hash_512_224(LastBufferSHA2(InitialSHA2_512mod,PAnsiChar(EvalStr)^,Length(EvalStr) * SizeOf(AnsiChar)));
 end;
 
@@ -511,7 +527,7 @@ Function InitialSHA2_512_256: TSHA2Hash_512_256;
 var
   EvalStr: AnsiString;
 begin
-EvalStr := 'SHA-512/256';
+EvalStr := StrToAnsi('SHA-512/256');
 Result := TSHA2Hash_512_256(LastBufferSHA2(InitialSHA2_512mod,PAnsiChar(EvalStr)^,Length(EvalStr) * SizeOf(AnsiChar)));
 end;
 
@@ -840,6 +856,135 @@ If HashSize = Default.HashSize then
       Result := Default;
   end
 else raise Exception.CreateFmt('StrToSHA2Def: Requested hash size differs from hash size of default value (%d,%d)',[Ord(HashSize),Ord(Default.HashSize)]);
+end;
+
+//==============================================================================
+
+Function CompareSHA2_32(A,B: TSHA2Hash_32; Count: Integer): Integer;
+var
+  OverlayA: array[0..7] of UInt32 absolute A;
+  OverlayB: array[0..7] of UInt32 absolute B;
+  i:        Integer;
+begin
+Result := 0;
+For i := 0 to Pred(Count) do
+  If OverlayA[i] > OverlayB[i] then
+    begin
+      Result := -1;
+      Break;
+    end
+  else If OverlayA[i] < OverlayB[i] then
+    begin
+      Result := -1;
+      Break;
+    end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function CompareSHA2_64(A,B: TSHA2Hash_64; Count: Integer): Integer;
+var
+  OverlayA: array[0..7] of UInt64 absolute A;
+  OverlayB: array[0..7] of UInt64 absolute B;
+  i:        Integer;
+
+  Function CompareValues(ValueA,ValueB: UInt64): Integer;
+  begin
+    If Int64Rec(ValueA).Hi = Int64Rec(ValueB).Hi then
+      begin
+        If Int64Rec(ValueA).Lo > Int64Rec(ValueB).Lo then
+          Result := -1
+        else If Int64Rec(ValueA).Lo < Int64Rec(ValueB).Lo then
+          Result := 1
+        else
+          Result := 0;
+      end
+    else If Int64Rec(ValueA).Hi > Int64Rec(ValueB).Hi then
+      Result := -1
+    else
+      Result := 1;
+  end;
+  
+begin
+Result := 0;
+For i := 0 to Pred(Count) do
+  If CompareValues(OverlayA[i],OverlayB[i]) < 0 then
+    begin
+      Result := -1;
+      Break;
+    end
+  else If CompareValues(OverlayA[i],OverlayB[i]) > 0 then
+    begin
+      Result := -1;
+      Break;
+    end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function CompareSHA2(A,B: TSHA2Hash_224): Integer;
+begin
+Result := CompareSHA2_32(TSHA2Hash_32(A),TSHA2Hash_32(B),7);
+end;
+
+//------------------------------------------------------------------------------
+
+Function CompareSHA2(A,B: TSHA2Hash_256): Integer;
+begin
+Result := CompareSHA2_32(TSHA2Hash_32(A),TSHA2Hash_32(B),8);
+end;
+
+//------------------------------------------------------------------------------
+
+Function CompareSHA2(A,B: TSHA2Hash_384): Integer;
+begin
+Result := CompareSHA2_64(TSHA2Hash_64(A),TSHA2Hash_64(B),6);
+end;
+
+//------------------------------------------------------------------------------
+
+Function CompareSHA2(A,B: TSHA2Hash_512): Integer;
+begin
+Result := CompareSHA2_64(TSHA2Hash_64(A),TSHA2Hash_64(B),8);
+end;
+
+//------------------------------------------------------------------------------
+
+Function CompareSHA2(A,B: TSHA2Hash_512_224): Integer;
+begin
+Result := CompareSHA2_64(TSHA2Hash_64(A),TSHA2Hash_64(B),3);
+If Result = 0 then
+  begin
+    If Int64Rec(A.PartD).Hi < Int64Rec(B.PartD).Hi then
+      Result := -1
+    else If Int64Rec(A.PartD).Hi > Int64Rec(B.PartD).Hi then
+      Result := 1;
+  end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function CompareSHA2(A,B: TSHA2Hash_512_256): Integer;
+begin
+Result := CompareSHA2_64(TSHA2Hash_64(A),TSHA2Hash_64(B),4);
+end;
+
+//------------------------------------------------------------------------------
+
+Function CompareSHA2(A,B: TSHA2Hash): Integer;
+begin
+If A.HashSize = B.HashSize then
+  case A.HashSize of
+    sha224:     Result := CompareSHA2(A.Hash224,B.Hash224);
+    sha256:     Result := CompareSHA2(A.Hash256,B.Hash256);
+    sha384:     Result := CompareSHA2(A.Hash384,B.Hash384);
+    sha512:     Result := CompareSHA2(A.Hash512,B.Hash512);
+    sha512_224: Result := CompareSHA2(A.Hash512_224,B.Hash512_224);
+    sha512_256: Result := CompareSHA2(A.Hash512_256,B.Hash512_256);
+  else
+    raise Exception.CreateFmt('CompareSHA2: Unknown hash size (%d)',[Ord(A.HashSize)]);
+  end
+else raise Exception.Create('CompareSHA2: Cannot compare different hashes');
 end;
 
 //==============================================================================
