@@ -32,18 +32,8 @@
 ===============================================================================}
 unit SHA2;
 
-{$DEFINE LargeBuffer}
-
-{$IFDEF ENDIAN_BIG}
-  {$MESSAGE FATAL 'Big-endian system not supported'}
-{$ENDIF}
-
-{$IFOPT Q+}
-  {$DEFINE OverflowCheck}
-{$ENDIF}
-
 {$IFDEF FPC}
-  {$MODE ObjFPC}{$H+}
+  {$MODE Delphi}
   {$INLINE ON}
   {$DEFINE CanInline}
   {$DEFINE FPC_DisableWarns}
@@ -56,13 +46,22 @@ unit SHA2;
   {$IFEND}
 {$ENDIF}
 
+{$IFOPT Q+}
+  {$DEFINE OverflowChecks}
+{$ENDIF}
+
 interface
 
 uses
-  Classes, AuxTypes;
+  Classes,
+  AuxTypes, HashBase;
+
+{===============================================================================
+    Auxiliary types, constants and functions
+===============================================================================}
 
 type
-  TOctaWord = record
+  TUInt128 = packed record
     case Integer of
       0:(Lo,Hi:   UInt64);
       1:(Bytes:   array[0..15] of UInt8);
@@ -70,14 +69,74 @@ type
       3:(DWords:  array[0..3] of UInt32);
       4:(QWords:  array[0..1] of UInt64);
   end;
+  PUInt128 = ^TUInt128;
+  UInt128 = TUInt128;
+
+  TOctaWord = TUInt128;
   POctaWord = ^TOctaWord;
   OctaWord = TOctaWord;
 
-const
-  ZeroOctaWord: OctaWord = (Lo: 0; Hi: 0);
+  OWord = OctaWord;
+  POWord = ^OWord;
 
+const
+  ZeroUInt128: TUInt128 = (Lo: 0; Hi: 0);
+
+Function BuildOctaWord(Lo,Hi: UInt64): TUInt128; overload;
+Function BuildOctaWord(Lo: UInt64): TUInt128; overload;{$IFDEF CanInline} inline; {$ENDIF}
+
+procedure IncrementOctaWord(var Value: TUInt128; Increment: TUInt128);
+
+Function SizeToMessageLength(Size: UInt64): TUInt128;
+
+Function EndianSwap(Value: TUInt128): TUInt128; overload;
+procedure EndianSwapValue(var Value: TUInt128); overload;{$IFDEF CanInline} inline; {$ENDIF}
+
+{===============================================================================
+    Common types and constants
+===============================================================================}
+{
+  Bytes in types TSHA224 trough TSHA512_256 are always ordered from most
+  significant byte to least significant byte (big endian).
+  
+  Types TSHA*Sys has no such guarantee and their internal structure depends on
+  current implementation.
+
+  SHA2 does not differ in little and big endian form, as it is not a single
+  quantity, therefore methods like SHA*ToLE or SHA*ToBE do nothing and are
+  present only for the sake of completeness.
+}
 type
-  TSHA2Hash_32 = record
+  TSHA2_32 = array[0..31] of UInt8;     PSHA2_32 = ^TSHA2_32;
+
+  TSHA224 = type TSHA2_32;              PSHA224 = ^TSHA224;
+  TSHA256 = type TSHA2_32;              PSHA256 = ^TSHA256;
+
+  TSHA2_64 = array[0..63] of UInt8;     PSHA2_64 = ^TSHA2_64;
+
+  TSHA384 = type TSHA2_64;              PSHA384 = ^TSHA384;
+  TSHA512 = type TSHA2_64;              PSHA512 = ^TSHA512;
+
+  TSHA512_224 = type TSHA2_64;          PSHA512_224 = ^TSHA512_224;
+  TSHA512_256 = type TSHA2_64;          PSHA512_256 = ^TSHA512_256;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+  TSHA2Length = (shal224, shal256, shal384, shal512, shal512_224, shal512_256);
+
+  TSHA2 = record
+    case HashLength: TSHA2Length of
+      shal224:      (SHA224:     TSHA224);
+      shal256:      (SHA256:     TSHA256);
+      shal384:      (SHA384:     TSHA384);
+      shal512:      (SHA512:     TSHA512);
+      shal512_224:  (SHA512_224: TSHA512_224);
+      shal512_256:  (SHA512_256: TSHA512_256);
+  end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  
+
+  TSHA2Sys_32 = record
     PartA:  UInt32;
     PartB:  UInt32;
     PartC:  UInt32;
@@ -87,11 +146,12 @@ type
     PartG:  UInt32;
     PartH:  UInt32;
   end;
+  PSHA2Sys_32 = ^TSHA2Sys_32;
 
-  TSHA2Hash_224 = type TSHA2Hash_32;
-  TSHA2Hash_256 = type TSHA2Hash_32;
+  TSHA224Sys = type TSHA2Sys_32;      PSHA224Sys = ^TSHA224Sys;
+  TSHA256Sys = type TSHA2Sys_32;      PSHA256Sys = ^TSHA256Sys;
 
-  TSHA2Hash_64 = record
+  TSHA2Sys_64 = record
     PartA:  UInt64;
     PartB:  UInt64;
     PartC:  UInt64;
@@ -101,157 +161,459 @@ type
     PartG:  UInt64;
     PartH:  UInt64;
   end;
+  PSHA2Sys_64 = ^TSHA2Sys_64;
 
-  TSHA2Hash_384 = type TSHA2Hash_64;
-  TSHA2Hash_512 = type TSHA2Hash_64;
+  TSHA384Sys = type TSHA2Sys_64;      PSHA384Sys = ^TSHA384Sys;
+  TSHA512Sys = type TSHA2Sys_64;      PSHA512Sys = ^TSHA512Sys;
 
-  TSHA2Hash_512_224 = type TSHA2Hash_512;
-  TSHA2Hash_512_256 = type TSHA2Hash_512;
+  TSHA512_224Sys = type TSHA2Sys_64;  PSHA512_224Sys = ^TSHA512_224Sys;
+  TSHA512_256Sys = type TSHA2Sys_64;  PSHA512_256Sys = ^TSHA512_256Sys;
 
-  TSHA2HashSize = (sha224, sha256, sha384, sha512, sha512_224, sha512_256);
-
-  TSHA2Hash = record
-    case HashSize: TSHA2HashSize of
-      sha224:     (Hash224:     TSHA2Hash_224);
-      sha256:     (Hash256:     TSHA2Hash_256);
-      sha384:     (Hash384:     TSHA2Hash_384);
-      sha512:     (Hash512:     TSHA2Hash_512);
-      sha512_224: (Hash512_224: TSHA2Hash_512_224);
-      sha512_256: (Hash512_256: TSHA2Hash_512_256);
-  end;
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  
 
 const
-  InitialSHA2_224: TSHA2Hash_224 =(
-    PartA: $C1059ED8;
-    PartB: $367CD507;
-    PartC: $3070DD17;
-    PartD: $F70E5939;
-    PartE: $FFC00B31;
-    PartF: $68581511;
-    PartG: $64F98FA7;
-    PartH: $BEFA4FA4);
+  InitialSHA224: TSHA224 =
+   ($C1,$05,$9E,$D8,$36,$7C,$D5,$07,$30,$70,$DD,$17,$F7,$0E,$59,$39,
+    $FF,$C0,$0B,$31,$68,$58,$15,$11,$64,$F9,$8F,$A7,$BE,$FA,$4F,$A4);
 
-  InitialSHA2_256: TSHA2Hash_256 =(
-    PartA: $6A09E667;
-    PartB: $BB67AE85;
-    PartC: $3C6Ef372;
-    PartD: $A54ff53A;
-    PartE: $510E527f;
-    PartF: $9B05688C;
-    PartG: $1F83d9AB;
-    PartH: $5BE0CD19);
+  InitialSHA256: TSHA256 =
+    ($6A,$09,$E6,$67,$BB,$67,$AE,$85,$3C,$6E,$f3,$72,$A5,$4f,$f5,$3A,
+     $51,$0E,$52,$7f,$9B,$05,$68,$8C,$1F,$83,$d9,$AB,$5B,$E0,$CD,$19);
 
-  InitialSHA2_384: TSHA2Hash_384 =(
-    PartA: UInt64($CBBB9D5DC1059ED8);
-    PartB: UInt64($629A292A367CD507);
-    PartC: UInt64($9159015A3070DD17);
-    PartD: UInt64($152FECD8F70E5939);
-    PartE: UInt64($67332667FFC00B31);
-    PartF: UInt64($8EB44A8768581511);
-    PartG: UInt64($DB0C2E0D64F98FA7);
-    PartH: UInt64($47B5481DBEFA4FA4));
+  InitialSHA384: TSHA384 =
+    ($CB,$BB,$9D,$5D,$C1,$05,$9E,$D8,$62,$9A,$29,$2A,$36,$7C,$D5,$07,
+     $91,$59,$01,$5A,$30,$70,$DD,$17,$15,$2F,$EC,$D8,$F7,$0E,$59,$39,
+     $67,$33,$26,$67,$FF,$C0,$0B,$31,$8E,$B4,$4A,$87,$68,$58,$15,$11,
+     $DB,$0C,$2E,$0D,$64,$F9,$8F,$A7,$47,$B5,$48,$1D,$BE,$FA,$4F,$A4);
 
-  InitialSHA2_512: TSHA2Hash_512 =(
-    PartA: UInt64($6A09E667F3BCC908);
-    PartB: UInt64($BB67AE8584CAA73B);
-    PartC: UInt64($3C6EF372FE94F82B);
-    PartD: UInt64($A54FF53A5F1D36F1);
-    PartE: UInt64($510E527FADE682D1);
-    PartF: UInt64($9B05688C2B3E6C1F);
-    PartG: UInt64($1F83D9ABFB41BD6B);
-    PartH: UInt64($5BE0CD19137E2179));
+  InitialSHA512: TSHA512 =
+    ($6A,$09,$E6,$67,$F3,$BC,$C9,$08,$BB,$67,$AE,$85,$84,$CA,$A7,$3B,
+     $3C,$6E,$F3,$72,$FE,$94,$F8,$2B,$A5,$4F,$F5,$3A,$5F,$1D,$36,$F1,
+     $51,$0E,$52,$7F,$AD,$E6,$82,$D1,$9B,$05,$68,$8C,$2B,$3E,$6C,$1F,
+     $1F,$83,$D9,$AB,$FB,$41,$BD,$6B,$5B,$E0,$CD,$19,$13,$7E,$21,$79);
 
-  InitialSHA2_512mod: TSHA2Hash_512 =(
-    PartA: UInt64($CFAC43C256196CAD);
-    PartB: UInt64($1EC20B20216F029E);
-    Partc: UInt64($99CB56D75B315D8E);
-    PartD: UInt64($00EA509FFAB89354);
-    PartE: UInt64($F4ABF7DA08432774);
-    PartF: UInt64($3EA0CD298E9BC9BA);
-    PartG: UInt64($BA267C0E5EE418CE);
-    PartH: UInt64($FE4568BCB6DB84DC));
+  InitialSHA512Mod: TSHA512 =
+    ($CF,$AC,$43,$C2,$56,$19,$6C,$AD,$1E,$C2,$0B,$20,$21,$6F,$02,$9E,
+     $99,$CB,$56,$D7,$5B,$31,$5D,$8E,$00,$EA,$50,$9F,$FA,$B8,$93,$54,
+     $F4,$AB,$F7,$DA,$08,$43,$27,$74,$3E,$A0,$CD,$29,$8E,$9B,$C9,$BA,
+     $BA,$26,$7C,$0E,$5E,$E4,$18,$CE,$FE,$45,$68,$BC,$B6,$DB,$84,$DC);
 
-  ZeroSHA2_224: TSHA2Hash_224 = (PartA: 0; PartB: 0; PartC: 0; PartD: 0;
-                                 PartE: 0; PartF: 0; PartG: 0; PartH: 0);    
-  ZeroSHA2_256: TSHA2Hash_256 = (PartA: 0; PartB: 0; PartC: 0; PartD: 0;
-                                 PartE: 0; PartF: 0; PartG: 0; PartH: 0);
-  ZeroSHA2_384: TSHA2Hash_384 = (PartA: 0; PartB: 0; PartC: 0; PartD: 0;
-                                 PartE: 0; PartF: 0; PartG: 0; PartH: 0);
-  ZeroSHA2_512: TSHA2Hash_512 = (PartA: 0; PartB: 0; PartC: 0; PartD: 0;
-                                 PartE: 0; PartF: 0; PartG: 0; PartH: 0);
+{
+  InitialSHA512_224 is calculated as a SHA512 of ASCII string 'SHA-512/224'
+  (without quotes) with initial value being the InitialSHA512Mod.
+}
+  InitialSHA512_224: TSHA512_224 =
+    ($8C,$3D,$37,$C8,$19,$54,$4D,$A2,$73,$E1,$99,$66,$89,$DC,$D4,$D6,
+     $1D,$FA,$B7,$AE,$32,$FF,$9C,$82,$67,$9D,$D5,$14,$58,$2F,$9F,$CF,
+     $0F,$6D,$2B,$69,$7B,$D4,$4D,$A8,$77,$E3,$6F,$73,$04,$C4,$89,$42,
+     $3F,$9D,$85,$A8,$6A,$1D,$36,$C8,$11,$12,$E6,$AD,$91,$D6,$92,$A1);
 
-  ZeroSHA2_512_224: TSHA2Hash_512_224 = (PartA: 0; PartB: 0; PartC: 0; PartD: 0;
-                                         PartE: 0; PartF: 0; PartG: 0; PartH: 0);
-  ZeroSHA2_512_256: TSHA2Hash_512_256 = (PartA: 0; PartB: 0; PartC: 0; PartD: 0;
-                                         PartE: 0; PartF: 0; PartG: 0; PartH: 0);
+{
+  InitialSHA512_256 is calculated as a SHA512 of ASCII string 'SHA-512/256'
+  (without quotes) with initial value being the InitialSHA512Mod.
+}
+  InitialSHA512_256: TSHA512_256 =
+    ($22,$31,$21,$94,$FC,$2B,$F7,$2C,$9F,$55,$5F,$A3,$C8,$4C,$64,$C2,
+     $23,$93,$B8,$6B,$6F,$53,$B1,$51,$96,$38,$77,$19,$59,$40,$EA,$BD,
+     $96,$28,$3E,$E2,$A8,$8E,$FF,$E3,$BE,$5E,$1E,$25,$53,$86,$39,$92,
+     $2B,$01,$99,$FC,$2C,$85,$B8,$AA,$0E,$B7,$2D,$DC,$81,$C5,$2C,$A2);
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  
+
+  ZeroSHA224: TSHA224 = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+  ZeroSHA256: TSHA256 = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+
+  ZeroSHA384: TSHA384 = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+  ZeroSHA512: TSHA512 = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+
+  ZeroSHA512_224: TSHA512_224 = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+  ZeroSHA512_256: TSHA512_256 = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  
+
+type
+  ESHA2Exception = class(EHashException);
+
+  ESHA2IncompatibleClass  = class(ESHA2Exception);
+  ESHA2IncompatibleLength = class(ESHA2Exception);
+  ESHA2ProcessingError    = class(ESHA2Exception);
+  ESHA2InvalidLength      = class(ESHA2Exception);
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                    TSHA2Hash
+================================================================================
+-------------------------------------------------------------------------------}
+type
+  TSHA2HashBuffer = array[0..64] of UInt8;
+
+{===============================================================================
+    TSHA2Hash - class declaration
+===============================================================================}
+type
+  TSHA2Hash = class(TBlockHash)
+  protected
+    class Function HashBufferToLE(HashBuffer: TSHA2HashBuffer): TSHA2HashBuffer; virtual;
+    class Function HashBufferToBE(HashBuffer: TSHA2HashBuffer): TSHA2HashBuffer; virtual;
+    class Function HashBufferFromLE(HashBuffer: TSHA2HashBuffer): TSHA2HashBuffer; virtual;
+    class Function HashBufferFromBE(HashBuffer: TSHA2HashBuffer): TSHA2HashBuffer; virtual;
+    Function GetHashBuffer: TSHA2HashBuffer; virtual; abstract;
+    procedure SetHashBuffer(HashBuffer: TSHA2HashBuffer); virtual; abstract;
+    Function GetSHA2: TSHA2; virtual;
+    procedure ProcessFirst(const Block); override;
+  public
+    class Function HashEndianness: THashEndianness; override;
+    class Function HashLength: TSHA2Length; virtual; abstract;
+  {
+    Since HashSize returns technical size of the hash, which is not always the
+    same as is indicated by its name, observed size was introduced. It returns
+    number of bytes that are observed in the hash (they are considered when
+    comparing and converting to/from string).
+  }
+    class Function HashObservedSize: TMemSize; virtual; abstract;
+    constructor CreateAndInitFrom(Hash: TSHA2); overload; virtual; abstract;
+    Function Compare(Hash: THashBase): Integer; override;
+    Function AsString: String; override;
+    procedure FromString(const Str: String); override;
+  {
+    Note that the hash is streamed in its entirety, not only ebserved bytes.
+    How many bytes will be written/read is equal to HashSize.
+  }
+    procedure SaveToStream(Stream: TStream; Endianness: THashEndianness = heDefault); override;
+    procedure LoadFromStream(Stream: TStream; Endianness: THashEndianness = heDefault); override;
+    property SHA2: TSHA2 read GetSHA2;
+  end;
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                  TSHA2Hash_32
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA2Hash_32 - class declaration
+===============================================================================}
+type
+  TSHA2Hash_32 = class(TSHA2Hash)
+  protected
+    fSHA2:  TSHA2Sys_32;
+    procedure ProcessBlock(const Block); override;
+    procedure ProcessLast; override;
+    procedure Initialize; override;
+  public
+    property SHA2Sys: TSHA2Sys_32 read fSHA2;
+  end;
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                  TSHA2Hash_64
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA2Hash_64 - class declaration
+===============================================================================}
+type
+  TSHA2Hash_64 = class(TSHA2Hash)
+  protected
+    fSHA2:  TSHA2Sys_64;
+    procedure ProcessBlock(const Block); override;
+    procedure ProcessLast; override;
+    procedure Initialize; override;
+  public
+    property SHA2Sys: TSHA2Sys_64 read fSHA2;
+  end;
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                   TSHA224Hash                                  
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA224Hash - class declaration
+===============================================================================}
+type
+  TSHA224Hash = class(TSHA2Hash_32)
+  protected
+    Function GetHashBuffer: TSHA2HashBuffer; override;
+    procedure SetHashBuffer(HashBuffer: TSHA2HashBuffer); override;
+    Function GetSHA224: TSHA224; virtual;
+    Function GetSHA224Sys: TSHA224Sys; virtual;
+    procedure Initialize; override;
+  public
+    class Function SHA224ToSys(SHA224: TSHA224): TSHA224Sys; virtual;
+    class Function SHA224FromSys(SHA224: TSHA224Sys): TSHA224; virtual;
+    class Function SHA224ToLE(SHA224: TSHA224): TSHA224; virtual;
+    class Function SHA224ToBE(SHA224: TSHA224): TSHA224; virtual;
+    class Function SHA224FromLE(SHA224: TSHA224): TSHA224; virtual;
+    class Function SHA224FromBE(SHA224: TSHA224): TSHA224; virtual;
+    class Function HashSize: TMemSize; override;
+    class Function HashName: String; override;
+    class Function HashLength: TSHA2Length; override;
+    class Function HashObservedSize: TMemSize; override;
+    constructor CreateAndInitFrom(Hash: THashBase); overload; override;
+    constructor CreateAndInitFrom(Hash: TSHA2); overload; override;
+    constructor CreateAndInitFrom(Hash: TSHA224); overload; virtual;
+    procedure Init; override;
+    procedure FromStringDef(const Str: String; const Default: TSHA224); reintroduce;
+    property SHA224: TSHA224 read GetSHA224;
+    property SHA224Sys: TSHA224Sys read GetSHA224Sys;
+  end;
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                   TSHA256Hash                                  
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA256Hash - class declaration
+===============================================================================}
+type
+  TSHA256Hash = class(TSHA2Hash_32)
+  protected
+    Function GetHashBuffer: TSHA2HashBuffer; override;
+    procedure SetHashBuffer(HashBuffer: TSHA2HashBuffer); override;
+    Function GetSHA256: TSHA256; virtual;
+    Function GetSHA256Sys: TSHA256Sys; virtual;
+    procedure Initialize; override;
+  public
+    class Function SHA256ToSys(SHA256: TSHA256): TSHA256Sys; virtual;
+    class Function SHA256FromSys(SHA256: TSHA256Sys): TSHA256; virtual;
+    class Function SHA256ToLE(SHA256: TSHA256): TSHA256; virtual;
+    class Function SHA256ToBE(SHA256: TSHA256): TSHA256; virtual;
+    class Function SHA256FromLE(SHA256: TSHA256): TSHA256; virtual;
+    class Function SHA256FromBE(SHA256: TSHA256): TSHA256; virtual;
+    class Function HashSize: TMemSize; override;
+    class Function HashName: String; override;
+    class Function HashLength: TSHA2Length; override;
+    class Function HashObservedSize: TMemSize; override;
+    constructor CreateAndInitFrom(Hash: THashBase); overload; override;
+    constructor CreateAndInitFrom(Hash: TSHA2); overload; override;
+    constructor CreateAndInitFrom(Hash: TSHA256); overload; virtual;
+    procedure Init; override;
+    procedure FromStringDef(const Str: String; const Default: TSHA256); reintroduce;
+    property SHA256: TSHA256 read GetSHA256;
+    property SHA256Sys: TSHA256Sys read GetSHA256Sys;
+  end;
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                   TSHA384Hash                                  
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA384Hash - class declaration
+===============================================================================}
+type
+  TSHA384Hash = class(TSHA2Hash_64)
+  protected
+    Function GetHashBuffer: TSHA2HashBuffer; override;
+    procedure SetHashBuffer(HashBuffer: TSHA2HashBuffer); override;
+    Function GetSHA384: TSHA384; virtual;
+    Function GetSHA384Sys: TSHA384Sys; virtual;
+    procedure Initialize; override;
+  public
+    class Function SHA384ToSys(SHA384: TSHA384): TSHA384Sys; virtual;
+    class Function SHA384FromSys(SHA384: TSHA384Sys): TSHA384; virtual;
+    class Function SHA384ToLE(SHA384: TSHA384): TSHA384; virtual;
+    class Function SHA384ToBE(SHA384: TSHA384): TSHA384; virtual;
+    class Function SHA384FromLE(SHA384: TSHA384): TSHA384; virtual;
+    class Function SHA384FromBE(SHA384: TSHA384): TSHA384; virtual;
+    class Function HashSize: TMemSize; override;
+    class Function HashName: String; override;
+    class Function HashLength: TSHA2Length; override;
+    class Function HashObservedSize: TMemSize; override;
+    constructor CreateAndInitFrom(Hash: THashBase); overload; override;
+    constructor CreateAndInitFrom(Hash: TSHA2); overload; override;
+    constructor CreateAndInitFrom(Hash: TSHA384); overload; virtual;
+    procedure Init; override;
+    procedure FromStringDef(const Str: String; const Default: TSHA384); reintroduce;
+    property SHA384: TSHA384 read GetSHA384;
+    property SHA384Sys: TSHA384Sys read GetSHA384Sys;
+  end;
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                   TSHA512Hash                                  
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA512Hash - class declaration
+===============================================================================}
+type
+  TSHA512Hash = class(TSHA2Hash_64)
+  protected
+    Function GetHashBuffer: TSHA2HashBuffer; override;
+    procedure SetHashBuffer(HashBuffer: TSHA2HashBuffer); override;
+    Function GetSHA512: TSHA512; virtual;
+    Function GetSHA512Sys: TSHA512Sys; virtual;
+    procedure Initialize; override;
+  public
+    class Function SHA512ToSys(SHA512: TSHA512): TSHA512Sys; virtual;
+    class Function SHA512FromSys(SHA512: TSHA512Sys): TSHA512; virtual;
+    class Function SHA512ToLE(SHA512: TSHA512): TSHA512; virtual;
+    class Function SHA512ToBE(SHA512: TSHA512): TSHA512; virtual;
+    class Function SHA512FromLE(SHA512: TSHA512): TSHA512; virtual;
+    class Function SHA512FromBE(SHA512: TSHA512): TSHA512; virtual;
+    class Function HashSize: TMemSize; override;
+    class Function HashName: String; override;
+    class Function HashLength: TSHA2Length; override;
+    class Function HashObservedSize: TMemSize; override;
+    constructor CreateAndInitFrom(Hash: THashBase); overload; override;
+    constructor CreateAndInitFrom(Hash: TSHA2); overload; override;
+    constructor CreateAndInitFrom(Hash: TSHA512); overload; virtual;
+    procedure Init; override;
+    procedure FromStringDef(const Str: String; const Default: TSHA512); reintroduce;
+    property SHA512: TSHA512 read GetSHA512;
+    property SHA512Sys: TSHA512Sys read GetSHA512Sys;
+  end;
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                   TSHA512_224Hash                                  
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA512_224Hash - class declaration
+===============================================================================}
+type
+  TSHA512_224Hash = class(TSHA2Hash_64)
+  protected
+    Function GetHashBuffer: TSHA2HashBuffer; override;
+    procedure SetHashBuffer(HashBuffer: TSHA2HashBuffer); override;
+    Function GetSHA512_224: TSHA512_224; virtual;
+    Function GetSHA512_224Sys: TSHA512_224Sys; virtual;
+    procedure Initialize; override;
+  public
+    class Function SHA512_224ToSys(SHA512_224: TSHA512_224): TSHA512_224Sys; virtual;
+    class Function SHA512_224FromSys(SHA512_224: TSHA512_224Sys): TSHA512_224; virtual;
+    class Function SHA512_224ToLE(SHA512_224: TSHA512_224): TSHA512_224; virtual;
+    class Function SHA512_224ToBE(SHA512_224: TSHA512_224): TSHA512_224; virtual;
+    class Function SHA512_224FromLE(SHA512_224: TSHA512_224): TSHA512_224; virtual;
+    class Function SHA512_224FromBE(SHA512_224: TSHA512_224): TSHA512_224; virtual;
+    class Function HashSize: TMemSize; override;
+    class Function HashName: String; override;
+    class Function HashLength: TSHA2Length; override;
+    class Function HashObservedSize: TMemSize; override;
+    constructor CreateAndInitFrom(Hash: THashBase); overload; override;
+    constructor CreateAndInitFrom(Hash: TSHA2); overload; override;
+    constructor CreateAndInitFrom(Hash: TSHA512_224); overload; virtual;
+    procedure Init; override;
+    procedure FromStringDef(const Str: String; const Default: TSHA512_224); reintroduce;
+    property SHA512_224: TSHA512_224 read GetSHA512_224;
+    property SHA512_224Sys: TSHA512_224Sys read GetSHA512_224Sys;
+  end;
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                   TSHA512_256Hash                                  
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA512_256Hash - class declaration
+===============================================================================}
+type
+  TSHA512_256Hash = class(TSHA2Hash_64)
+  protected
+    Function GetHashBuffer: TSHA2HashBuffer; override;
+    procedure SetHashBuffer(HashBuffer: TSHA2HashBuffer); override;
+    Function GetSHA512_256: TSHA512_256; virtual;
+    Function GetSHA512_256Sys: TSHA512_256Sys; virtual;
+    procedure Initialize; override;
+  public
+    class Function SHA512_256ToSys(SHA512_256: TSHA512_256): TSHA512_256Sys; virtual;
+    class Function SHA512_256FromSys(SHA512_256: TSHA512_256Sys): TSHA512_256; virtual;
+    class Function SHA512_256ToLE(SHA512_256: TSHA512_256): TSHA512_256; virtual;
+    class Function SHA512_256ToBE(SHA512_256: TSHA512_256): TSHA512_256; virtual;
+    class Function SHA512_256FromLE(SHA512_256: TSHA512_256): TSHA512_256; virtual;
+    class Function SHA512_256FromBE(SHA512_256: TSHA512_256): TSHA512_256; virtual;
+    class Function HashSize: TMemSize; override;
+    class Function HashName: String; override;
+    class Function HashLength: TSHA2Length; override;
+    class Function HashObservedSize: TMemSize; override;
+    constructor CreateAndInitFrom(Hash: THashBase); overload; override;
+    constructor CreateAndInitFrom(Hash: TSHA2); overload; override;
+    constructor CreateAndInitFrom(Hash: TSHA512_256); overload; virtual;
+    procedure Init; override;
+    procedure FromStringDef(const Str: String; const Default: TSHA512_256); reintroduce;
+    property SHA512_256: TSHA512_256 read GetSHA512_256;
+    property SHA512_256Sys: TSHA512_256Sys read GetSHA512_256Sys;
+  end;
+
+{===============================================================================
+    Backward compatibility functions
+===============================================================================}
+{
+  Following two functions could be implemented to only return precomputed
+  constants, but for the sake of backward compatibility, they are actually
+  calculating the result.
+}
+Function InitialSHA2_512_224: TSHA512_224;
+Function InitialSHA2_512_256: TSHA512_256;
 
 //------------------------------------------------------------------------------
 
-Function BuildOctaWord(Lo,Hi: UInt64): OctaWord;
+Function SHA2ToStr(SHA224: TSHA224): String; overload;
+Function SHA2ToStr(SHA256: TSHA256): String; overload;
+Function SHA2ToStr(SHA384: TSHA384): String; overload;
+Function SHA2ToStr(SHA512: TSHA512): String; overload;
+Function SHA2ToStr(SHA512_224: TSHA512_224): String; overload;
+Function SHA2ToStr(SHA512_256: TSHA512_256): String; overload;
+Function SHA2ToStr(SHA2: TSHA2): String; overload;
 
-Function InitialSHA2_512_224: TSHA2Hash_512_224;
-Function InitialSHA2_512_256: TSHA2Hash_512_256;
+// Delphi cannot overload based on result type, welp...
+Function StrToSHA2_224(Str: String): TSHA224;
+Function StrToSHA2_256(Str: String): TSHA256;
+Function StrToSHA2_384(Str: String): TSHA384;
+Function StrToSHA2_512(Str: String): TSHA512;
+Function StrToSHA2_512_224(Str: String): TSHA512_224;
+Function StrToSHA2_512_256(Str: String): TSHA512_256;
+Function StrToSHA2(HashLength: TSHA2Length; Str: String): TSHA2;
 
-//------------------------------------------------------------------------------
+Function TryStrToSHA2(const Str: String; out SHA224: TSHA224): Boolean; overload;
+Function TryStrToSHA2(const Str: String; out SHA256: TSHA256): Boolean; overload;
+Function TryStrToSHA2(const Str: String; out SHA384: TSHA384): Boolean; overload;
+Function TryStrToSHA2(const Str: String; out SHA512: TSHA512): Boolean; overload;
+Function TryStrToSHA2(const Str: String; out SHA512_224: TSHA512_224): Boolean; overload;
+Function TryStrToSHA2(const Str: String; out SHA512_256: TSHA512_256): Boolean; overload;
+Function TryStrToSHA2(HashLength: TSHA2Length; const Str: String; out SHA2: TSHA2): Boolean; overload;
 
-Function SHA2ToStr(Hash: TSHA2Hash_224): String; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function SHA2ToStr(Hash: TSHA2Hash_256): String; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function SHA2ToStr(Hash: TSHA2Hash_384): String; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function SHA2ToStr(Hash: TSHA2Hash_512): String; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function SHA2ToStr(Hash: TSHA2Hash_512_224): String; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function SHA2ToStr(Hash: TSHA2Hash_512_256): String; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function SHA2ToStr(Hash: TSHA2Hash): String; overload;
+Function StrToSHA2Def(const Str: String; Default: TSHA224): TSHA224; overload;
+Function StrToSHA2Def(const Str: String; Default: TSHA256): TSHA256; overload;
+Function StrToSHA2Def(const Str: String; Default: TSHA384): TSHA384; overload;
+Function StrToSHA2Def(const Str: String; Default: TSHA512): TSHA512; overload;
+Function StrToSHA2Def(const Str: String; Default: TSHA512_224): TSHA512_224; overload;
+Function StrToSHA2Def(const Str: String; Default: TSHA512_256): TSHA512_256; overload;
+Function StrToSHA2Def(HashLength: TSHA2Length; const Str: String; Default: TSHA2): TSHA2; overload;
 
-Function StrToSHA2_224(Str: String): TSHA2Hash_224;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function StrToSHA2_256(Str: String): TSHA2Hash_256;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function StrToSHA2_384(Str: String): TSHA2Hash_384;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function StrToSHA2_512(Str: String): TSHA2Hash_512;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function StrToSHA2_512_224(Str: String): TSHA2Hash_512_224;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function StrToSHA2_512_256(Str: String): TSHA2Hash_512_256;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function StrToSHA2(HashSize: TSHA2HashSize; Str: String): TSHA2Hash;
+Function CompareSHA2(A,B: TSHA224): Integer; overload;
+Function CompareSHA2(A,B: TSHA256): Integer; overload;
+Function CompareSHA2(A,B: TSHA384): Integer; overload;
+Function CompareSHA2(A,B: TSHA512): Integer; overload;
+Function CompareSHA2(A,B: TSHA512_224): Integer; overload;
+Function CompareSHA2(A,B: TSHA512_256): Integer; overload;
+Function CompareSHA2(A,B: TSHA2): Integer; overload;
 
-Function TryStrToSHA2(const Str: String; out Hash: TSHA2Hash_224): Boolean; overload;
-Function TryStrToSHA2(const Str: String; out Hash: TSHA2Hash_256): Boolean; overload;
-Function TryStrToSHA2(const Str: String; out Hash: TSHA2Hash_384): Boolean; overload;
-Function TryStrToSHA2(const Str: String; out Hash: TSHA2Hash_512): Boolean; overload;
-Function TryStrToSHA2(const Str: String; out Hash: TSHA2Hash_512_224): Boolean; overload;
-Function TryStrToSHA2(const Str: String; out Hash: TSHA2Hash_512_256): Boolean; overload;
-Function TryStrToSHA2(HashSize: TSHA2HashSize; const Str: String; out Hash: TSHA2Hash): Boolean; overload;
+Function SameSHA2(A,B: TSHA224): Boolean; overload;
+Function SameSHA2(A,B: TSHA256): Boolean; overload;
+Function SameSHA2(A,B: TSHA384): Boolean; overload;
+Function SameSHA2(A,B: TSHA512): Boolean; overload;
+Function SameSHA2(A,B: TSHA512_224): Boolean; overload;
+Function SameSHA2(A,B: TSHA512_256): Boolean; overload;
+Function SameSHA2(A,B: TSHA2): Boolean; overload;
 
-Function StrToSHA2Def(const Str: String; Default: TSHA2Hash_224): TSHA2Hash_224; overload;
-Function StrToSHA2Def(const Str: String; Default: TSHA2Hash_256): TSHA2Hash_256; overload;
-Function StrToSHA2Def(const Str: String; Default: TSHA2Hash_384): TSHA2Hash_384; overload;
-Function StrToSHA2Def(const Str: String; Default: TSHA2Hash_512): TSHA2Hash_512; overload;
-Function StrToSHA2Def(const Str: String; Default: TSHA2Hash_512_224): TSHA2Hash_512_224; overload;
-Function StrToSHA2Def(const Str: String; Default: TSHA2Hash_512_256): TSHA2Hash_512_256; overload;
-Function StrToSHA2Def(HashSize: TSHA2HashSize; const Str: String; Default: TSHA2Hash): TSHA2Hash; overload;
-
-Function CompareSHA2(A,B: TSHA2Hash_224): Integer; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function CompareSHA2(A,B: TSHA2Hash_256): Integer; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function CompareSHA2(A,B: TSHA2Hash_384): Integer; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function CompareSHA2(A,B: TSHA2Hash_512): Integer; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function CompareSHA2(A,B: TSHA2Hash_512_224): Integer; overload;
-Function CompareSHA2(A,B: TSHA2Hash_512_256): Integer; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function CompareSHA2(A,B: TSHA2Hash): Integer; overload;
-
-Function SameSHA2(A,B: TSHA2Hash_224): Boolean; overload;
-Function SameSHA2(A,B: TSHA2Hash_256): Boolean; overload;
-Function SameSHA2(A,B: TSHA2Hash_384): Boolean; overload;
-Function SameSHA2(A,B: TSHA2Hash_512): Boolean; overload;
-Function SameSHA2(A,B: TSHA2Hash_512_224): Boolean; overload;
-Function SameSHA2(A,B: TSHA2Hash_512_256): Boolean; overload;
-Function SameSHA2(A,B: TSHA2Hash): Boolean; overload;
-
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_224): TSHA2Hash_224; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_256): TSHA2Hash_256; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_384): TSHA2Hash_384; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_512): TSHA2Hash_512; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_512_224): TSHA2Hash_512_224; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_512_256): TSHA2Hash_512_256; overload;{$IF Defined(CanInline) and Defined(FPC)} inline; {$IFEND}
-Function BinaryCorrectSHA2(Hash: TSHA2Hash): TSHA2Hash; overload;
+Function BinaryCorrectSHA2(SHA224: TSHA224): TSHA224; overload;{$IFDEF CanInline} inline; {$ENDIF}
+Function BinaryCorrectSHA2(SHA256: TSHA256): TSHA256; overload;{$IFDEF CanInline} inline; {$ENDIF}
+Function BinaryCorrectSHA2(SHA384: TSHA384): TSHA384; overload;{$IFDEF CanInline} inline; {$ENDIF}
+Function BinaryCorrectSHA2(SHA512: TSHA512): TSHA512; overload;{$IFDEF CanInline} inline; {$ENDIF}
+Function BinaryCorrectSHA2(SHA512_224: TSHA512_224): TSHA512_224; overload;{$IFDEF CanInline} inline; {$ENDIF}
+Function BinaryCorrectSHA2(SHA512_256: TSHA512_256): TSHA512_256; overload;{$IFDEF CanInline} inline; {$ENDIF}
+Function BinaryCorrectSHA2(SHA2: TSHA2): TSHA2; overload;{$IFDEF CanInline} inline; {$ENDIF}
 
 //------------------------------------------------------------------------------
-
+(*
 procedure BufferSHA2(var Hash: TSHA2Hash_224; const Buffer; Size: TMemSize); overload;
 procedure BufferSHA2(var Hash: TSHA2Hash_256; const Buffer; Size: TMemSize); overload;
 procedure BufferSHA2(var Hash: TSHA2Hash_384; const Buffer; Size: TMemSize); overload;
@@ -288,58 +650,317 @@ Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize): TSHA
 Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize): TSHA2Hash_512_224; overload;
 Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize): TSHA2Hash_512_256; overload;
 Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize): TSHA2Hash; overload;
-
+*)
 //------------------------------------------------------------------------------
 
-Function BufferSHA2(HashSize: TSHA2HashSize; const Buffer; Size: TMemSize): TSHA2Hash; overload;
+Function BufferSHA2(HashLength: TSHA2Length; const Buffer; Size: TMemSize): TSHA2; overload;
 
-Function AnsiStringSHA2(HashSize: TSHA2HashSize; const Str: AnsiString): TSHA2Hash;{$IFDEF CanInline} inline; {$ENDIF}
-Function WideStringSHA2(HashSize: TSHA2HashSize; const Str: WideString): TSHA2Hash;{$IFDEF CanInline} inline; {$ENDIF}
-Function StringSHA2(HashSize: TSHA2HashSize; const Str: String): TSHA2Hash;{$IFDEF CanInline} inline; {$ENDIF}
+Function AnsiStringSHA2(HashLength: TSHA2Length; const Str: AnsiString): TSHA2;
+Function WideStringSHA2(HashLength: TSHA2Length; const Str: WideString): TSHA2;
+Function StringSHA2(HashLength: TSHA2Length; const Str: String): TSHA2;
 
-Function StreamSHA2(HashSize: TSHA2HashSize; Stream: TStream; Count: Int64 = -1): TSHA2Hash;
-Function FileSHA2(HashSize: TSHA2HashSize; const FileName: String): TSHA2Hash;
+Function StreamSHA2(HashLength: TSHA2Length; Stream: TStream; Count: Int64 = -1): TSHA2;
+Function FileSHA2(HashLength: TSHA2Length; const FileName: String): TSHA2;
 
 //------------------------------------------------------------------------------
 
 type
   TSHA2Context = type Pointer;
 
-Function SHA2_Init(HashSize: TSHA2HashSize): TSHA2Context;
+Function SHA2_Init(HashLength: TSHA2Length): TSHA2Context;
 procedure SHA2_Update(Context: TSHA2Context; const Buffer; Size: TMemSize);
-Function SHA2_Final(var Context: TSHA2Context; const Buffer; Size: TMemSize): TSHA2Hash; overload;
-Function SHA2_Final(var Context: TSHA2Context): TSHA2Hash; overload;
-Function SHA2_Hash(HashSize: TSHA2HashSize; const Buffer; Size: TMemSize): TSHA2Hash;
+Function SHA2_Final(var Context: TSHA2Context; const Buffer; Size: TMemSize): TSHA2; overload;
+Function SHA2_Final(var Context: TSHA2Context): TSHA2; overload;
+Function SHA2_Hash(HashLength: TSHA2Length; const Buffer; Size: TMemSize): TSHA2;
 
 implementation
 
 uses
-  SysUtils, Math, BitOps, StrRect;
+  SysUtils,
+  BitOps, StrRect;
 
-{$IFDEF FPC_DisableWarns}
-  {$DEFINE FPCDWM}
-  {$DEFINE W4055:={$WARN 4055 OFF}} // Conversion between ordinals and pointers is not portable
-  {$DEFINE W4056:={$WARN 4056 OFF}} // Conversion between ordinals and pointers is not portable
-  {$PUSH}{$WARN 2005 OFF} // Comment level $1 found
-  {$IF Defined(FPC) and (FPC_FULLVERSION >= 30000)}
-    {$DEFINE W5092:={$WARN 5092 OFF}} // Variable "$1" of a managed type does not seem to be initialized
-  {$ELSE}
-    {$DEFINE W5092:=}
-  {$IFEND}
-  {$POP}
-{$ENDIF}
+{===============================================================================
+    Auxiliary functions - implementation
+===============================================================================}
+{-------------------------------------------------------------------------------
+    Auxiliary functions - public functions
+-------------------------------------------------------------------------------}
 
+Function BuildOctaWord(Lo,Hi: UInt64): TUInt128;
+begin
+Result.Lo := Lo;
+Result.Hi := Hi;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function BuildOctaWord(Lo: UInt64): TUInt128;
+begin
+Result := BuildOctaWord(Lo,0);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure IncrementOctaWord(var Value: TUInt128; Increment: TUInt128);
+var
+  Result: UInt64;
+  Carry:  UInt32;
+  i:      Integer;
+begin
+Carry := 0;
+For i := Low(Value.DWords) to High(Value.DWords) do
+  begin
+    Result := UInt64(Carry) + Value.DWords[i] + Increment.DWords[i];
+    Value.DWords[i] := Int64Rec(Result).Lo;
+    Carry := Int64Rec(Result).Hi;
+  end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function SizeToMessageLength(Size: UInt64): TUInt128;
+begin
+Result.Hi := UInt64(Size shr 61);
+Result.Lo := UInt64(Size shl 3);
+end;
+
+//------------------------------------------------------------------------------
+
+Function EndianSwap(Value: TUInt128): TUInt128;
+begin
+Result.Hi := EndianSwap(Value.Lo);
+Result.Lo := EndianSwap(Value.Hi);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure EndianSwapValue(var Value: TUInt128);
+begin
+Value := EndianSwap(Value);
+end;
+
+{-------------------------------------------------------------------------------
+    Auxiliary functions - private functions
+-------------------------------------------------------------------------------}
+
+procedure EndianSwapValue(var Value: TSHA2Sys_32); overload;
+begin
+EndianSwapValue(Value.PartA);
+EndianSwapValue(Value.PartB);
+EndianSwapValue(Value.PartC);
+EndianSwapValue(Value.PartD);
+EndianSwapValue(Value.PartE);
+EndianSwapValue(Value.PartF);
+EndianSwapValue(Value.PartG);
+EndianSwapValue(Value.PartH);
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+procedure EndianSwapValue(var Value: TSHA2Sys_64); overload;
+begin
+EndianSwapValue(Value.PartA);
+EndianSwapValue(Value.PartB);
+EndianSwapValue(Value.PartC);
+EndianSwapValue(Value.PartD);
+EndianSwapValue(Value.PartE);
+EndianSwapValue(Value.PartF);
+EndianSwapValue(Value.PartG);
+EndianSwapValue(Value.PartH);
+end;
+
+//------------------------------------------------------------------------------
+
+Function CreateFromLength(HashLength: TSHA2Length): TSHA2Hash;
+begin
+case HashLength of
+  shal224:      Result := TSHA224Hash.Create;
+  shal256:      Result := TSHA256Hash.Create;
+  shal384:      Result := TSHA384Hash.Create;
+  shal512:      Result := TSHA512Hash.Create;
+  shal512_224:  Result := TSHA512_224Hash.Create;
+  shal512_256:  Result := TSHA512_256Hash.Create;
+else
+  raise ESHA2InvalidLength.CreateFmt('CreateFromLength: Invalid hash length (%d)',[Ord(HashLength)]);
+end;
+end;
+
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                    TSHA2Hash
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA2Hash - class implementation
+===============================================================================}
+{-------------------------------------------------------------------------------
+    TSHA2Hash - protected methods
+-------------------------------------------------------------------------------}
+
+class Function TSHA2Hash.HashBufferToLE(HashBuffer: TSHA2HashBuffer): TSHA2HashBuffer;
+begin
+Result := HashBuffer;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA2Hash.HashBufferToBE(HashBuffer: TSHA2HashBuffer): TSHA2HashBuffer;
+begin
+Result := HashBuffer;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA2Hash.HashBufferFromLE(HashBuffer: TSHA2HashBuffer): TSHA2HashBuffer;
+begin
+Result := HashBuffer;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA2Hash.HashBufferFromBE(HashBuffer: TSHA2HashBuffer): TSHA2HashBuffer;
+begin
+Result := HashBuffer;
+end;
+
+//------------------------------------------------------------------------------
+
+Function TSHA2Hash.GetSHA2: TSHA2;
+var
+  Temp: TSHA2HashBuffer;
+begin
+Result.HashLength := HashLength;
+Temp := GetHashBuffer;
+Move(Temp,Result.SHA224,HashSize);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA2Hash.ProcessFirst(const Block);
+begin
+inherited;
+ProcessBlock(Block);
+end;
+
+{-------------------------------------------------------------------------------
+    TSHA2Hash - public methods
+-------------------------------------------------------------------------------}
+
+class Function TSHA2Hash.HashEndianness: THashEndianness;
+begin
+// first byte is most significant
+Result := heBig;
+end;
+
+//------------------------------------------------------------------------------
+
+Function TSHA2Hash.Compare(Hash: THashBase): Integer;
+var
+  A,B:  TSHA2HashBuffer;
+  i:    Integer;
+begin
+If Hash is Self.ClassType then
+  begin
+    Result := 0;
+    A := GetHashBuffer;
+    B := TSHA2Hash(Hash).GetHashBuffer;
+    For i := 0 to Pred(HashObservedSize) do
+      If A[i] > B[i] then
+        begin
+          Result := +1;
+          Break;
+        end
+      else If A[i] < B[i] then
+        begin
+          Result := -1;
+          Break;
+        end;
+  end
+else raise ESHA2IncompatibleClass.CreateFmt('TSHA2Hash.Compare: Incompatible class (%s).',[Hash.ClassName]);
+end;
+
+//------------------------------------------------------------------------------
+
+Function TSHA2Hash.AsString: String;
+var
+  Temp: TSHA2HashBuffer;
+  i:    Integer;
+begin
+Temp := GetHashBuffer;
+Result := StringOfChar('0',HashObservedSize * 2);
+For i := 0 to Pred(HashObservedSize) do
+  begin
+    Result[(i * 2) + 2] := IntToHex(Temp[i] and $0F,1)[1];
+    Result[(i * 2) + 1] := IntToHex(Temp[i] shr 4,1)[1];
+  end;
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA2Hash.FromString(const Str: String);
+var
+  TempStr:    String;
+  i:          Integer;
+  HashBuffer: TSHA2HashBuffer;
+begin
+If Length(Str) < Integer(HashObservedSize * 2) then
+  TempStr := StringOfChar('0',Integer(HashObservedSize * 2) - Length(Str)) + Str
+else If Length(Str) > Integer(HashObservedSize * 2) then
+  TempStr := Copy(Str,Length(Str) - Pred(Integer(HashObservedSize * 2)),Integer(HashObservedSize * 2))
+else
+  TempStr := Str;
+FillChar(HashBuffer,SizeOf(TSHA2HashBuffer),0);
+For i := 0 to Pred(HashObservedSize) do
+  HashBuffer[i] := UInt8(StrToInt('$' + Copy(TempStr,(i * 2) + 1,2)));
+SetHashBuffer(HashBuffer);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA2Hash.SaveToStream(Stream: TStream; Endianness: THashEndianness = heDefault);
+var
+  Temp: TSHA2HashBuffer;
+begin
+case Endianness of
+  heSystem: Temp := {$IFDEF ENDIAN_BIG}HashBufferToBE{$ELSE}HashBufferToLE{$ENDIF}(GetHashBuffer);
+  heLittle: Temp := HashBufferToLE(GetHashBuffer);
+  heBig:    Temp := HashBufferToBE(GetHashBuffer);
+else
+ {heDefault}
+  Temp := GetHashBuffer;
+end;
+Stream.WriteBuffer(Temp,HashSize);  // do not use observed size
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA2Hash.LoadFromStream(Stream: TStream; Endianness: THashEndianness = heDefault);
+var
+  Temp: TSHA2HashBuffer;
+begin
+Stream.ReadBuffer(Temp,HashSize);
+case Endianness of
+  heSystem: SetHashBuffer({$IFDEF ENDIAN_BIG}HashBufferFromBE{$ELSE}HashBufferFromLE{$ENDIF}(Temp));
+  heLittle: SetHashBuffer(HashBufferFromLE(Temp));
+  heBig:    SetHashBuffer(HashBufferFromBE(Temp));
+else
+ {heDefault}
+  SetHashBuffer(Temp);
+end;
+end;
+
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                  TSHA2Hash_32
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA2Hash_32 - calculation constants
+===============================================================================}
 const
-  BlockSize_32    = 64;                             // 512 bits
-  BlockSize_64    = 128;                            // 1024 bits
-{$IFDEF LargeBuffers}
-  BlocksPerBuffer = 16384;                          // 1MiB BufferSize (32b block)
-{$ELSE}
-  BlocksPerBuffer = 64;                             // 4KiB BufferSize (32b block)
-{$ENDIF}
-  BufferSize      = BlocksPerBuffer * BlockSize_32; // Size of read buffer
-
-  RoundConsts_32: array[0..63] of UInt32 = (
+  SHA2_32_ROUND_CONSTS: array[0..63] of UInt32 = (
     $428A2F98, $71374491, $B5C0FBCF, $E9B5DBA5, $3956C25B, $59F111F1, $923F82A4, $AB1C5ED5,
     $D807AA98, $12835B01, $243185BE, $550C7DC3, $72BE5D74, $80DEB1FE, $9BDC06A7, $C19BF174,
     $E49B69C1, $EFBE4786, $0FC19DC6, $240CA1CC, $2DE92C6F, $4A7484AA, $5CB0A9DC, $76F988DA,
@@ -348,8 +969,110 @@ const
     $A2BFE8A1, $A81A664B, $C24B8B70, $C76C51A3, $D192E819, $D6990624, $F40E3585, $106AA070,
     $19A4C116, $1E376C08, $2748774C, $34B0BCB5, $391C0CB3, $4ED8AA4A, $5B9CCA4F, $682E6FF3,
     $748F82EE, $78A5636F, $84C87814, $8CC70208, $90BEFFFA, $A4506CEB, $BEF9A3F7, $C67178F2);
+    
+{===============================================================================
+    TSHA2Hash_32 - class implementation
+===============================================================================}
+{-------------------------------------------------------------------------------
+    TSHA2Hash_32 - protected methods
+-------------------------------------------------------------------------------}
 
-  RoundConsts_64: array[0..79] of UInt64 = (
+procedure TSHA2Hash_32.ProcessBlock(const Block);
+var
+  Hash:         TSHA2Sys_32;
+  i:            Integer;
+  Temp1,Temp2:  UInt32;
+  Schedule:     array[0..63] of UInt32;
+  BlockWords:   array[0..15] of UInt32 absolute Block;
+begin
+Hash := fSHA2;
+For i := 0 to 15 do
+  Schedule[i] := {$IFNDEF ENDIAN_BIG}EndianSwap{$ENDIF}(BlockWords[i]);
+{$IFDEF OverflowChecks}{$Q-}{$ENDIF}
+For i := 16 to 63 do
+  Schedule[i] := UInt32(Schedule[i - 16] + (ROR(Schedule[i - 15],7) xor ROR(Schedule[i - 15],18) xor (Schedule[i - 15] shr 3)) +
+                        Schedule[i - 7] + (ROR(Schedule[i - 2],17) xor ROR(Schedule[i - 2],19) xor (Schedule[i - 2] shr 10)));
+For i := 0 to 63 do
+  begin
+    Temp1 := UInt32(Hash.PartH + (ROR(Hash.PartE,6) xor ROR(Hash.PartE,11) xor ROR(Hash.PartE,25)) +
+                  ((Hash.PartE and Hash.PartF) xor ((not Hash.PartE) and Hash.PartG)) + SHA2_32_ROUND_CONSTS[i] + Schedule[i]);
+    Temp2 := UInt32((ROR(Hash.PartA,2) xor ROR(Hash.PartA,13) xor ROR(Hash.PartA,22)) +
+                   ((Hash.PartA and Hash.PartB) xor (Hash.PartA and Hash.PartC) xor (Hash.PartB and Hash.PartC)));
+    Hash.PartH := Hash.PartG;
+    Hash.PartG := Hash.PartF;
+    Hash.PartF := Hash.PartE;
+    Hash.PartE := UInt32(Hash.PartD + Temp1);
+    Hash.PartD := Hash.PartC;
+    Hash.PartC := Hash.PartB;
+    Hash.PartB := Hash.PartA;
+    Hash.PartA := UInt32(Temp1 + Temp2);
+  end;
+fSHA2.PartA := UInt32(fSHA2.PartA + Hash.PartA);
+fSHA2.PartB := UInt32(fSHA2.PartB + Hash.PartB);
+fSHA2.PartC := UInt32(fSHA2.PartC + Hash.PartC);
+fSHA2.PartD := UInt32(fSHA2.PartD + Hash.PartD);
+fSHA2.PartE := UInt32(fSHA2.PartE + Hash.PartE);
+fSHA2.PartF := UInt32(fSHA2.PartF + Hash.PartF);
+fSHA2.PartG := UInt32(fSHA2.PartG + Hash.PartG);
+fSHA2.PartH := UInt32(fSHA2.PartH + Hash.PartH);
+{$IFDEF OverflowChecks}{$Q+}{$ENDIF}
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA2Hash_32.ProcessLast;
+begin
+If (fBlockSize - fTempCount) >= (SizeOf(UInt64) + 1) then
+  begin
+    // padding and length can fit
+  {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
+    FillChar(Pointer(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^,fBlockSize - fTempCount,0);
+    PUInt8(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^ := $80;
+    PUInt64(PtrUInt(fTempBlock) - SizeOf(UInt64) + PtrUInt(fBlockSize))^ :=
+      {$IFNDEF ENDIAN_BIG}EndianSwap{$ENDIF}(UInt64(fProcessedBytes) * 8);
+  {$IFDEF FPCDWM}{$POP}{$ENDIF}
+    ProcessBlock(fTempBlock^);
+  end
+else
+  begin
+    // padding and length cannot fit  
+    If fBlockSize > fTempCount then
+      begin
+      {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
+        FillChar(Pointer(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^,fBlockSize - fTempCount,0);
+        PUInt8(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^ := $80;
+      {$IFDEF FPCDWM}{$POP}{$ENDIF}
+        ProcessBlock(fTempBlock^);
+        FillChar(fTempBlock^,fBlockSize,0);
+      {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
+        PUInt64(PtrUInt(fTempBlock) - SizeOf(UInt64) + PtrUInt(fBlockSize))^ :=
+          {$IFNDEF ENDIAN_BIG}EndianSwap{$ENDIF}(UInt64(fProcessedBytes) * 8);
+      {$IFDEF FPCDWM}{$POP}{$ENDIF}
+        ProcessBlock(fTempBlock^);        
+      end
+    else raise ESHA2ProcessingError.CreateFmt('TSHA2Hash_32.ProcessLast: Invalid data transfer (%d).',[fTempCount]);
+  end;
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA2Hash_32.Initialize;
+begin
+fBlockSize := 64; // 512 bits
+inherited;
+end;
+
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                  TSHA2Hash_64
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA2Hash_64 - calculation constants
+===============================================================================}
+const
+  SHA2_64_ROUND_CONSTS: array[0..79] of UInt64 = (
     UInt64($428A2F98D728AE22), UInt64($7137449123EF65CD), UInt64($B5C0FBCFEC4D3B2F), UInt64($E9B5DBA58189DBBC),
     UInt64($3956C25BF348B538), UInt64($59F111F1B605D019), UInt64($923F82A4AF194F9B), UInt64($AB1C5ED5DA6D8118),
     UInt64($D807AA98A3030242), UInt64($12835B0145706FBE), UInt64($243185BE4EE4B28C), UInt64($550C7DC3D5FFB4E2),
@@ -371,114 +1094,32 @@ const
     UInt64($28DB77F523047D84), UInt64($32CAAB7B40C72493), UInt64($3C9EBE0A15C9BEBC), UInt64($431D67C49C100D4C),
     UInt64($4CC5D4BECB3E42B6), UInt64($597F299CFC657E2A), UInt64($5FCB6FAB3AD6FAEC), UInt64($6C44198C4A475817));
 
-type
-  TBlockBuffer_32 = array[0..BlockSize_32 - 1] of UInt8;
-  PBlockBuffer_32 = ^TBlockBuffer_32;
-  TBlockBuffer_64 = array[0..BlockSize_64 - 1] of UInt8;
-  PBlockBuffer_64 = ^TBlockBuffer_64;
+{===============================================================================
+    TSHA2Hash_64 - class implementation
+===============================================================================}
+{-------------------------------------------------------------------------------
+    TSHA2Hash_64 - protected methods
+-------------------------------------------------------------------------------}
 
-  TSHA2Context_Internal = record
-    MessageHash:      TSHA2Hash;
-    MessageLength:    OctaWord;
-    TransferSize:     UInt32;
-    TransferBuffer:   TBlockBuffer_64;
-    ActiveBlockSize:  UInt32;
-  end;
-  PSHA2Context_Internal = ^TSHA2Context_Internal;
-
-//==============================================================================
-
-Function EndianSwap(Value: OctaWord): OctaWord; overload;
-begin
-Result.Hi := EndianSwap(Value.Lo);
-Result.Lo := EndianSwap(Value.Hi);
-end;
-
-//------------------------------------------------------------------------------
-
-Function SizeToMessageLength(Size: UInt64): OctaWord;
-begin
-Result.Hi := UInt64(Size shr 61);
-Result.Lo := UInt64(Size shl 3);
-end;
-
-//------------------------------------------------------------------------------
-
-procedure IncOctaWord(var Value: OctaWord; Increment: OctaWord);
+procedure TSHA2Hash_64.ProcessBlock(const Block);
 var
-  Result: UInt64;
-  Carry:  UInt32;
-  i:      Integer;
-begin
-Carry := 0;
-For i := Low(Value.DWords) to High(Value.DWords) do
-  begin
-    Result := UInt64(Carry) + Value.DWords[i] + Increment.DWords[i];
-    Value.DWords[i] := Int64Rec(Result).Lo;
-    Carry := Int64Rec(Result).Hi;
-  end;
-end;
-
-//==============================================================================
-
-Function BlockHash_32(Hash: TSHA2Hash_32; const Block): TSHA2Hash_32;
-var
-  i:            Integer;
-  Temp1,Temp2:  UInt32;
-  Schedule:     array[0..63] of UInt32;
-  BlockWords:   array[0..15] of UInt32 absolute Block;
-begin
-Result := Hash;
-For i := 0 to 15 do Schedule[i] := EndianSwap(BlockWords[i]);
-{$IFDEF OverflowCheck}{$Q-}{$ENDIF}
-For i := 16 to 63 do
-  Schedule[i] := UInt32(Schedule[i - 16] + (ROR(Schedule[i - 15],7) xor ROR(Schedule[i - 15],18) xor (Schedule[i - 15] shr 3)) +
-                        Schedule[i - 7] + (ROR(Schedule[i - 2],17) xor ROR(Schedule[i - 2],19) xor (Schedule[i - 2] shr 10)));
-For i := 0 to 63 do
-  begin
-    Temp1 := UInt32(Hash.PartH + (ROR(Hash.PartE,6) xor ROR(Hash.PartE,11) xor ROR(Hash.PartE,25)) +
-                  ((Hash.PartE and Hash.PartF) xor ((not Hash.PartE) and Hash.PartG)) + RoundConsts_32[i] + Schedule[i]);
-    Temp2 := UInt32((ROR(Hash.PartA,2) xor ROR(Hash.PartA,13) xor ROR(Hash.PartA,22)) +
-                   ((Hash.PartA and Hash.PartB) xor (Hash.PartA and Hash.PartC) xor (Hash.PartB and Hash.PartC)));
-    Hash.PartH := Hash.PartG;
-    Hash.PartG := Hash.PartF;
-    Hash.PartF := Hash.PartE;
-    Hash.PartE := UInt32(Hash.PartD + Temp1);
-    Hash.PartD := Hash.PartC;
-    Hash.PartC := Hash.PartB;
-    Hash.PartB := Hash.PartA;
-    Hash.PartA := UInt32(Temp1 + Temp2);
-  end;
-Result.PartA := UInt32(Result.PartA + Hash.PartA);
-Result.PartB := UInt32(Result.PartB + Hash.PartB);
-Result.PartC := UInt32(Result.PartC + Hash.PartC);
-Result.PartD := UInt32(Result.PartD + Hash.PartD);
-Result.PartE := UInt32(Result.PartE + Hash.PartE);
-Result.PartF := UInt32(Result.PartF + Hash.PartF);
-Result.PartG := UInt32(Result.PartG + Hash.PartG);
-Result.PartH := UInt32(Result.PartH + Hash.PartH);
-{$IFDEF OverflowCheck}{$Q+}{$ENDIF}
-end;
-
-//------------------------------------------------------------------------------
-
-Function BlockHash_64(Hash: TSHA2Hash_64; const Block): TSHA2Hash_64;
-var
+  Hash:         TSHA2Sys_64;
   i:            Integer;
   Temp1,Temp2:  UInt64;
   Schedule:     array[0..79] of UInt64;
   BlockWords:   array[0..15] of UInt64 absolute Block;
 begin
-Result := Hash;
-For i := 0 to 15 do Schedule[i] := EndianSwap(BlockWords[i]);
-{$IFDEF OverflowCheck}{$Q-}{$ENDIF}
+Hash := fSHA2;
+For i := 0 to 15 do
+  Schedule[i] := {$IFNDEF ENDIAN_BIG}EndianSwap{$ENDIF}(BlockWords[i]);
+{$IFDEF OverflowChecks}{$Q-}{$ENDIF}
 For i := 16 to 79 do
   Schedule[i] := UInt64(Schedule[i - 16] + (ROR(Schedule[i - 15],1) xor ROR(Schedule[i - 15],8) xor (Schedule[i - 15] shr 7)) +
                         Schedule[i - 7] + (ROR(Schedule[i - 2],19) xor ROR(Schedule[i - 2],61) xor (Schedule[i - 2] shr 6)));
 For i := 0 to 79 do
   begin
     Temp1 := UInt64(Hash.PartH + (ROR(Hash.PartE,14) xor ROR(Hash.PartE,18) xor ROR(Hash.PartE,41)) +
-                  ((Hash.PartE and Hash.PartF) xor ((not Hash.PartE) and Hash.PartG)) + RoundConsts_64[i] + Schedule[i]);
+                  ((Hash.PartE and Hash.PartF) xor ((not Hash.PartE) and Hash.PartG)) + SHA2_64_ROUND_CONSTS[i] + Schedule[i]);
     Temp2 := UInt64((ROR(Hash.PartA,28) xor ROR(Hash.PartA,34) xor ROR(Hash.PartA,39)) +
                    ((Hash.PartA and Hash.PartB) xor (Hash.PartA and Hash.PartC) xor (Hash.PartB and Hash.PartC)));
     Hash.PartH := Hash.PartG;
@@ -490,1236 +1131,2110 @@ For i := 0 to 79 do
     Hash.PartB := Hash.PartA;
     Hash.PartA := UInt64(Temp1 + Temp2);
   end;
-Result.PartA := UInt64(Result.PartA + Hash.PartA);
-Result.PartB := UInt64(Result.PartB + Hash.PartB);
-Result.PartC := UInt64(Result.PartC + Hash.PartC);
-Result.PartD := UInt64(Result.PartD + Hash.PartD);
-Result.PartE := UInt64(Result.PartE + Hash.PartE);
-Result.PartF := UInt64(Result.PartF + Hash.PartF);
-Result.PartG := UInt64(Result.PartG + Hash.PartG);
-Result.PartH := UInt64(Result.PartH + Hash.PartH);
-{$IFDEF OverflowCheck}{$Q+}{$ENDIF}
-end;
-
-//==============================================================================
-//------------------------------------------------------------------------------
-//==============================================================================
-
-Function BuildOctaWord(Lo,Hi: UInt64): OctaWord;
-begin
-Result.Lo := Lo;
-Result.Hi := Hi;
-end;
-
-//==============================================================================
-
-Function InitialSHA2_512_224: TSHA2Hash_512_224;
-var
-  EvalStr: AnsiString;
-begin
-EvalStr := StrToAnsi('SHA-512/224');
-Result := TSHA2Hash_512_224(LastBufferSHA2(InitialSHA2_512mod,PAnsiChar(EvalStr)^,Length(EvalStr) * SizeOf(AnsiChar)));
+fSHA2.PartA := UInt64(fSHA2.PartA + Hash.PartA);
+fSHA2.PartB := UInt64(fSHA2.PartB + Hash.PartB);
+fSHA2.PartC := UInt64(fSHA2.PartC + Hash.PartC);
+fSHA2.PartD := UInt64(fSHA2.PartD + Hash.PartD);
+fSHA2.PartE := UInt64(fSHA2.PartE + Hash.PartE);
+fSHA2.PartF := UInt64(fSHA2.PartF + Hash.PartF);
+fSHA2.PartG := UInt64(fSHA2.PartG + Hash.PartG);
+fSHA2.PartH := UInt64(fSHA2.PartH + Hash.PartH);
+{$IFDEF OverflowChecks}{$Q+}{$ENDIF}
 end;
 
 //------------------------------------------------------------------------------
 
-Function InitialSHA2_512_256: TSHA2Hash_512_256;
-var
-  EvalStr: AnsiString;
+procedure TSHA2Hash_64.ProcessLast;
 begin
-EvalStr := StrToAnsi('SHA-512/256');
-Result := TSHA2Hash_512_256(LastBufferSHA2(InitialSHA2_512mod,PAnsiChar(EvalStr)^,Length(EvalStr) * SizeOf(AnsiChar)));
-end;
-
-//==============================================================================
-//------------------------------------------------------------------------------
-//==============================================================================
-
-Function SHA2ToStr_32(Hash: TSHA2Hash_32; Bits: Integer): String;
-begin
-Result := Copy(IntToHex(Hash.PartA,8) + IntToHex(Hash.PartB,8) +
-               IntToHex(Hash.PartC,8) + IntToHex(Hash.PartD,8) +
-               IntToHex(Hash.PartE,8) + IntToHex(Hash.PartF,8) +
-               IntToHex(Hash.PartG,8) + IntToHex(Hash.PartH,8),1,Bits shr 2);
-end;
-
-//------------------------------------------------------------------------------
-
-Function SHA2ToStr_64(Hash: TSHA2Hash_64; Bits: Integer): String;
-begin
-Result := Copy(IntToHex(Hash.PartA,16) + IntToHex(Hash.PartB,16) +
-               IntToHex(Hash.PartC,16) + IntToHex(Hash.PartD,16) +
-               IntToHex(Hash.PartE,16) + IntToHex(Hash.PartF,16) +
-               IntToHex(Hash.PartG,16) + IntToHex(Hash.PartH,16),1,Bits shr 2);
-end;
-
-//------------------------------------------------------------------------------
-
-Function SHA2ToStr(Hash: TSHA2Hash_224): String;
-begin
-Result := SHA2ToStr_32(TSHA2Hash_32(Hash),224);
-end;
-
-//------------------------------------------------------------------------------
-
-Function SHA2ToStr(Hash: TSHA2Hash_256): String;
-begin
-Result := SHA2ToStr_32(TSHA2Hash_32(Hash),256);
-end;
-
-//------------------------------------------------------------------------------
-
-Function SHA2ToStr(Hash: TSHA2Hash_384): String;
-begin
-Result := SHA2ToStr_64(TSHA2Hash_64(Hash),384);
-end;
-
-//------------------------------------------------------------------------------
-
-Function SHA2ToStr(Hash: TSHA2Hash_512): String;
-begin
-Result := SHA2ToStr_64(TSHA2Hash_64(Hash),512);
-end;
-
-//------------------------------------------------------------------------------
-
-Function SHA2ToStr(Hash: TSHA2Hash_512_224): String;
-begin
-Result := SHA2ToStr_64(TSHA2Hash_64(Hash),224);
-end;
-
-//------------------------------------------------------------------------------
-
-Function SHA2ToStr(Hash: TSHA2Hash_512_256): String;
-begin
-Result := SHA2ToStr_64(TSHA2Hash_64(Hash),256);
-end;
-
-//------------------------------------------------------------------------------
-
-Function SHA2ToStr(Hash: TSHA2Hash): String;
-begin
-case Hash.HashSize of
-  sha224:     Result := SHA2ToStr(Hash.Hash224);
-  sha256:     Result := SHA2ToStr(Hash.Hash256);
-  sha384:     Result := SHA2ToStr(Hash.Hash384);
-  sha512:     Result := SHA2ToStr(Hash.Hash512);
-  sha512_224: Result := SHA2ToStr(Hash.Hash512_224);
-  sha512_256: Result := SHA2ToStr(Hash.Hash512_256);
-else
-  raise Exception.CreateFmt('SHA2ToStr: Unknown hash size (%d)',[Ord(Hash.HashSize)]);
-end;
-end;
-
-//==============================================================================
-
-{$IFDEF FPCDWM}{$PUSH}W5092{$ENDIF}
-Function StrToSHA2_32(Str: String; Bits: Integer): TSHA2Hash_32;
-var
-  Characters: Integer;
-  HashWords:  array[0..7] of UInt32 absolute Result;
-  i:          Integer;
-begin
-Characters := Bits shr 2;
-If Length(Str) < Characters then
-  Str := StringOfChar('0',Characters - Length(Str)) + Str
-else
-  If Length(Str) > Characters then
-    Str := Copy(Str,Length(Str) - Characters + 1,Characters);
-Str := Str + StringOfChar('0',64 - Length(Str));
-For i := 0 to 7 do
-  HashWords[i] := UInt32(StrToInt('$' + Copy(Str,(i * 8) + 1,8)));
-end;
-{$IFDEF FPCDWM}{$POP}{$ENDIF}
-
-//------------------------------------------------------------------------------
-
-{$IFDEF FPCDWM}{$PUSH}W5092{$ENDIF}
-Function StrToSHA2_64(Str: String; Bits: Integer): TSHA2Hash_64;
-var
-  Characters: Integer;
-  HashWords:  array[0..7] of UInt64 absolute Result;
-  i:          Integer;
-begin
-Characters := Bits shr 2;
-If Length(Str) < Characters then
-  Str := StringOfChar('0',Characters - Length(Str)) + Str
-else
-  If Length(Str) > Characters then
-    Str := Copy(Str,Length(Str) - Characters + 1,Characters);
-Str := Str + StringOfChar('0',128 - Length(Str));
-For i := 0 to 7 do
-  HashWords[i] := UInt64(StrToInt64('$' + Copy(Str,(i * 16) + 1,16)));
-end;
-{$IFDEF FPCDWM}{$POP}{$ENDIF}
-
-//------------------------------------------------------------------------------
-
-Function StrToSHA2_224(Str: String): TSHA2Hash_224;
-begin
-Result := TSHA2Hash_224(StrToSHA2_32(Str,224));
-end;
-
-//------------------------------------------------------------------------------
-
-Function StrToSHA2_256(Str: String): TSHA2Hash_256;
-begin
-Result := TSHA2Hash_256(StrToSHA2_32(Str,256));
-end;
-
-//------------------------------------------------------------------------------
-
-Function StrToSHA2_384(Str: String): TSHA2Hash_384;
-begin
-Result := TSHA2Hash_384(StrToSHA2_64(Str,384));
-end;
-
-//------------------------------------------------------------------------------
-
-Function StrToSHA2_512(Str: String): TSHA2Hash_512;
-begin
-Result := TSHA2Hash_512(StrToSHA2_64(Str,512));
-end;
-
-//------------------------------------------------------------------------------
-
-Function StrToSHA2_512_224(Str: String): TSHA2Hash_512_224;
-begin
-Result := TSHA2Hash_512_224(StrToSHA2_64(Str,224));
-end;
-
-//------------------------------------------------------------------------------
-
-Function StrToSHA2_512_256(Str: String): TSHA2Hash_512_256;
-begin
-Result := TSHA2Hash_512_256(StrToSHA2_64(Str,256));
-end;
-
-//------------------------------------------------------------------------------
-
-Function StrToSHA2(HashSize: TSHA2HashSize; Str: String): TSHA2Hash;
-begin
-Result.HashSize := HashSize;
-case HashSize of
-  sha224:     Result.Hash224 := StrToSHA2_224(Str);
-  sha256:     Result.Hash256 := StrToSHA2_256(Str);
-  sha384:     Result.Hash384 := StrToSHA2_384(Str);
-  sha512:     Result.Hash512 := StrToSHA2_512(Str);
-  sha512_224: Result.Hash512_224 := StrToSHA2_512_224(Str);
-  sha512_256: Result.Hash512_256 := StrToSHA2_512_256(Str);
-else
-  raise Exception.CreateFmt('StrToSHA2: Unknown hash size (%d)',[Ord(HashSize)]);
-end;
-end;
-
-//==============================================================================
-
-Function TryStrToSHA2(const Str: String; out Hash: TSHA2Hash_224): Boolean;
-begin
-try
-  Hash := StrToSHA2_224(Str);
-  Result := True;
-except
-  Result := False;
-end;
-end;
-
-//------------------------------------------------------------------------------
-
-Function TryStrToSHA2(const Str: String; out Hash: TSHA2Hash_256): Boolean;
-begin
-try
-  Hash := StrToSHA2_256(Str);
-  Result := True;
-except
-  Result := False;
-end;
-end;
-//------------------------------------------------------------------------------
-
-Function TryStrToSHA2(const Str: String; out Hash: TSHA2Hash_384): Boolean;
-begin
-try
-  Hash := StrToSHA2_384(Str);
-  Result := True;
-except
-  Result := False;
-end;
-end;
-//------------------------------------------------------------------------------
-
-Function TryStrToSHA2(const Str: String; out Hash: TSHA2Hash_512): Boolean;
-begin
-try
-  Hash := StrToSHA2_512(Str);
-  Result := True;
-except
-  Result := False;
-end;
-end;
-
-//------------------------------------------------------------------------------
-
-Function TryStrToSHA2(const Str: String; out Hash: TSHA2Hash_512_224): Boolean;
-begin
-try
-  Hash := StrToSHA2_512_224(Str);
-  Result := True;
-except
-  Result := False;
-end;
-end;
-
-//------------------------------------------------------------------------------
-
-Function TryStrToSHA2(const Str: String; out Hash: TSHA2Hash_512_256): Boolean;
-begin
-try
-  Hash := StrToSHA2_512_256(Str);
-  Result := True;
-except
-  Result := False;
-end;
-end;
-
-//------------------------------------------------------------------------------
-
-Function TryStrToSHA2(HashSize: TSHA2HashSize; const Str: String; out Hash: TSHA2Hash): Boolean;
-begin
-case HashSize of
-  sha224:     Result := TryStrToSHA2(Str,Hash.Hash224);
-  sha256:     Result := TryStrToSHA2(Str,Hash.Hash256);
-  sha384:     Result := TryStrToSHA2(Str,Hash.Hash384);
-  sha512:     Result := TryStrToSHA2(Str,Hash.Hash512);
-  sha512_224: Result := TryStrToSHA2(Str,Hash.Hash512_224);
-  sha512_256: Result := TryStrToSHA2(Str,Hash.Hash512_256);
-else
-  raise Exception.CreateFmt('TryStrToSHA2: Unknown hash size (%d)',[Ord(HashSize)]);
-end;
-end;
-
-//==============================================================================
-
-Function StrToSHA2Def(const Str: String; Default: TSHA2Hash_224): TSHA2Hash_224;
-begin
-If not TryStrToSHA2(Str,Result) then
-  Result := Default;
-end;
-
-//------------------------------------------------------------------------------
-
-Function StrToSHA2Def(const Str: String; Default: TSHA2Hash_256): TSHA2Hash_256;
-begin
-If not TryStrToSHA2(Str,Result) then
-  Result := Default;
-end;
-
-//------------------------------------------------------------------------------
-
-Function StrToSHA2Def(const Str: String; Default: TSHA2Hash_384): TSHA2Hash_384;
-begin
-If not TryStrToSHA2(Str,Result) then
-  Result := Default;
-end;
-
-//------------------------------------------------------------------------------
-
-Function StrToSHA2Def(const Str: String; Default: TSHA2Hash_512): TSHA2Hash_512;
-begin
-If not TryStrToSHA2(Str,Result) then
-  Result := Default;
-end;
-
-//------------------------------------------------------------------------------
-
-Function StrToSHA2Def(const Str: String; Default: TSHA2Hash_512_224): TSHA2Hash_512_224;
-begin
-If not TryStrToSHA2(Str,Result) then
-  Result := Default;
-end;
-
-//------------------------------------------------------------------------------
-
-Function StrToSHA2Def(const Str: String; Default: TSHA2Hash_512_256): TSHA2Hash_512_256;
-begin
-If not TryStrToSHA2(Str,Result) then
-  Result := Default;
-end;
-
-//------------------------------------------------------------------------------
-
-Function StrToSHA2Def(HashSize: TSHA2HashSize; const Str: String; Default: TSHA2Hash): TSHA2Hash;
-begin
-If HashSize = Default.HashSize then
+If (fBlockSize - fTempCount) >= (SizeOf(UInt128) + 1) then
   begin
-    If not TryStrToSHA2(HashSize,Str,Result) then
-      Result := Default;
+    // padding and length can fit
+  {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
+    FillChar(Pointer(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^,fBlockSize - fTempCount,0);
+    PUInt8(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^ := $80;
+    PUInt128(PtrUInt(fTempBlock) - SizeOf(UInt128) + PtrUInt(fBlockSize))^ :=
+      {$IFNDEF ENDIAN_BIG}EndianSwap{$ENDIF}(SizeToMessageLength(fProcessedBytes));
+  {$IFDEF FPCDWM}{$POP}{$ENDIF}
+    ProcessBlock(fTempBlock^);
   end
-else raise Exception.CreateFmt('StrToSHA2Def: Requested hash size differs from hash size of default value (%d,%d)',[Ord(HashSize),Ord(Default.HashSize)]);
-end;
-
-//==============================================================================
-
-Function CompareSHA2_32(A,B: TSHA2Hash_32; Count: Integer): Integer;
-var
-  OverlayA: array[0..7] of UInt32 absolute A;
-  OverlayB: array[0..7] of UInt32 absolute B;
-  i:        Integer;
-begin
-Result := 0;
-For i := 0 to Pred(Count) do
-  If OverlayA[i] > OverlayB[i] then
-    begin
-      Result := -1;
-      Break;
-    end
-  else If OverlayA[i] < OverlayB[i] then
-    begin
-      Result := -1;
-      Break;
-    end;
-end;
-
-//------------------------------------------------------------------------------
-
-Function CompareSHA2_64(A,B: TSHA2Hash_64; Count: Integer): Integer;
-var
-  OverlayA: array[0..7] of UInt64 absolute A;
-  OverlayB: array[0..7] of UInt64 absolute B;
-  i:        Integer;
-
-  Function CompareValues(ValueA,ValueB: UInt64): Integer;
+else
   begin
-    If Int64Rec(ValueA).Hi = Int64Rec(ValueB).Hi then
+    // padding and length cannot fit  
+    If fBlockSize > fTempCount then
       begin
-        If Int64Rec(ValueA).Lo > Int64Rec(ValueB).Lo then
-          Result := -1
-        else If Int64Rec(ValueA).Lo < Int64Rec(ValueB).Lo then
-          Result := 1
-        else
-          Result := 0;
+      {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
+        FillChar(Pointer(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^,fBlockSize - fTempCount,0);
+        PUInt8(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^ := $80;
+      {$IFDEF FPCDWM}{$POP}{$ENDIF}
+        ProcessBlock(fTempBlock^);
+        FillChar(fTempBlock^,fBlockSize,0);
+      {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
+        PUInt128(PtrUInt(fTempBlock) - SizeOf(UInt128) + PtrUInt(fBlockSize))^ :=
+          {$IFNDEF ENDIAN_BIG}EndianSwap{$ENDIF}(SizeToMessageLength(fProcessedBytes));
+      {$IFDEF FPCDWM}{$POP}{$ENDIF}
+        ProcessBlock(fTempBlock^);        
       end
-    else If Int64Rec(ValueA).Hi > Int64Rec(ValueB).Hi then
-      Result := -1
-    else
-      Result := 1;
-  end;
-  
-begin
-Result := 0;
-For i := 0 to Pred(Count) do
-  If CompareValues(OverlayA[i],OverlayB[i]) < 0 then
-    begin
-      Result := -1;
-      Break;
-    end
-  else If CompareValues(OverlayA[i],OverlayB[i]) > 0 then
-    begin
-      Result := -1;
-      Break;
-    end;
-end;
-
-//------------------------------------------------------------------------------
-
-Function CompareSHA2(A,B: TSHA2Hash_224): Integer;
-begin
-Result := CompareSHA2_32(TSHA2Hash_32(A),TSHA2Hash_32(B),7);
-end;
-
-//------------------------------------------------------------------------------
-
-Function CompareSHA2(A,B: TSHA2Hash_256): Integer;
-begin
-Result := CompareSHA2_32(TSHA2Hash_32(A),TSHA2Hash_32(B),8);
-end;
-
-//------------------------------------------------------------------------------
-
-Function CompareSHA2(A,B: TSHA2Hash_384): Integer;
-begin
-Result := CompareSHA2_64(TSHA2Hash_64(A),TSHA2Hash_64(B),6);
-end;
-
-//------------------------------------------------------------------------------
-
-Function CompareSHA2(A,B: TSHA2Hash_512): Integer;
-begin
-Result := CompareSHA2_64(TSHA2Hash_64(A),TSHA2Hash_64(B),8);
-end;
-
-//------------------------------------------------------------------------------
-
-Function CompareSHA2(A,B: TSHA2Hash_512_224): Integer;
-begin
-Result := CompareSHA2_64(TSHA2Hash_64(A),TSHA2Hash_64(B),3);
-If Result = 0 then
-  begin
-    If Int64Rec(A.PartD).Hi < Int64Rec(B.PartD).Hi then
-      Result := -1
-    else If Int64Rec(A.PartD).Hi > Int64Rec(B.PartD).Hi then
-      Result := 1;
+    else raise ESHA2ProcessingError.CreateFmt('TSHA2Hash_64.ProcessLast: Invalid data transfer (%d).',[fTempCount]);
   end;
 end;
 
 //------------------------------------------------------------------------------
 
-Function CompareSHA2(A,B: TSHA2Hash_512_256): Integer;
+procedure TSHA2Hash_64.Initialize;
 begin
-Result := CompareSHA2_64(TSHA2Hash_64(A),TSHA2Hash_64(B),4);
+fBlockSize := 128;  // 1024 bits
+inherited;
+end;
+
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                   TSHA224Hash                                  
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA224Hash - class implementation
+===============================================================================}
+{-------------------------------------------------------------------------------
+    TSHA224Hash - protected methods
+-------------------------------------------------------------------------------}
+
+Function TSHA224Hash.GetHashBuffer: TSHA2HashBuffer;
+var
+  Temp: TSHA224;
+begin
+Temp := SHA224FromSys(TSHA224Sys(fSHA2));
+FillChar(Result,SizeOf(TSHA2HashBuffer),0);
+Move(Temp,Result,HashSize);
 end;
 
 //------------------------------------------------------------------------------
 
-Function CompareSHA2(A,B: TSHA2Hash): Integer;
+procedure TSHA224Hash.SetHashBuffer(HashBuffer: TSHA2HashBuffer);
+var
+  Temp: TSHA224;
 begin
-If A.HashSize = B.HashSize then
-  case A.HashSize of
-    sha224:     Result := CompareSHA2(A.Hash224,B.Hash224);
-    sha256:     Result := CompareSHA2(A.Hash256,B.Hash256);
-    sha384:     Result := CompareSHA2(A.Hash384,B.Hash384);
-    sha512:     Result := CompareSHA2(A.Hash512,B.Hash512);
-    sha512_224: Result := CompareSHA2(A.Hash512_224,B.Hash512_224);
-    sha512_256: Result := CompareSHA2(A.Hash512_256,B.Hash512_256);
-  else
-    raise Exception.CreateFmt('CompareSHA2: Unknown hash size (%d)',[Ord(A.HashSize)]);
-  end
-else raise Exception.Create('CompareSHA2: Cannot compare different hashes');
-end;
-
-//==============================================================================
-
-Function SameSHA2(A,B: TSHA2Hash_224): Boolean;
-begin
-Result := (A.PartA = B.PartA) and (A.PartB = B.PartB) and
-          (A.PartC = B.PartC) and (A.PartD = B.PartD) and
-          (A.PartE = B.PartE) and (A.PartF = B.PartF) and
-          (A.PartG = B.PartG);
+Move(HashBuffer,Temp,HashSize);
+fSHA2 := TSHA2Sys_32(SHA224ToSys(Temp));
 end;
 
 //------------------------------------------------------------------------------
 
-Function SameSHA2(A,B: TSHA2Hash_256): Boolean;
+Function TSHA224Hash.GetSHA224: TSHA224;
 begin
-Result := (A.PartA = B.PartA) and (A.PartB = B.PartB) and
-          (A.PartC = B.PartC) and (A.PartD = B.PartD) and
-          (A.PartA = B.PartE) and (A.PartF = B.PartF) and
-          (A.PartG = B.PartG) and (A.PartH = B.PartH);
+Result := SHA224FromSys(TSHA224Sys(fSHA2));
 end;
 
 //------------------------------------------------------------------------------
 
-Function SameSHA2(A,B: TSHA2Hash_384): Boolean;
+Function TSHA224Hash.GetSHA224Sys: TSHA224Sys;
 begin
-Result := (A.PartA = B.PartA) and (A.PartB = B.PartB) and
-          (A.PartC = B.PartC) and (A.PartD = B.PartD) and
-          (A.PartA = B.PartE) and (A.PartF = B.PartF);
+Result := TSHA224Sys(fSHA2);
 end;
 
 //------------------------------------------------------------------------------
 
-Function SameSHA2(A,B: TSHA2Hash_512): Boolean;
+procedure TSHA224Hash.Initialize;
 begin
-Result := (A.PartA = B.PartA) and (A.PartB = B.PartB) and
-          (A.PartC = B.PartC) and (A.PartD = B.PartD) and
-          (A.PartA = B.PartE) and (A.PartF = B.PartF) and
-          (A.PartG = B.PartG) and (A.PartH = B.PartH);
+inherited;
+fSHA2 := TSHA2Sys_32(SHA224ToSys(ZeroSHA224));
+end;
+
+{-------------------------------------------------------------------------------
+    TSHA224Hash - public methods
+-------------------------------------------------------------------------------}
+
+class Function TSHA224Hash.SHA224ToSys(SHA224: TSHA224): TSHA224Sys;
+var
+  Temp: TSHA224Sys absolute SHA224;
+begin
+Result := Temp;
+{$IFNDEF ENDIAN_BIG}
+EndianSwapValue(TSHA2Sys_32(Result));
+{$ENDIF}
 end;
 
 //------------------------------------------------------------------------------
 
-Function SameSHA2(A,B: TSHA2Hash_512_224): Boolean;
+class Function TSHA224Hash.SHA224FromSys(SHA224: TSHA224Sys): TSHA224;
+var
+  Temp: TSHA224Sys absolute Result;
 begin
-Result := (A.PartA = B.PartA) and (A.PartB = B.PartB) and
-          (A.PartC = B.PartC) and (Int64Rec(A.PartD).Hi = Int64Rec(B.PartD).Hi);
+Temp := SHA224;
+{$IFNDEF ENDIAN_BIG}
+EndianSwapValue(TSHA2Sys_32(Temp));
+{$ENDIF}
 end;
 
 //------------------------------------------------------------------------------
 
-Function SameSHA2(A,B: TSHA2Hash_512_256): Boolean;
+class Function TSHA224Hash.SHA224ToLE(SHA224: TSHA224): TSHA224;
 begin
-Result := (A.PartA = B.PartA) and (A.PartB = B.PartB) and
-          (A.PartC = B.PartC) and (A.PartD = B.PartD);
+Result := SHA224;
+end; 
+
+//------------------------------------------------------------------------------
+
+class Function TSHA224Hash.SHA224ToBE(SHA224: TSHA224): TSHA224;
+begin
+Result := SHA224;
 end;
 
 //------------------------------------------------------------------------------
 
-Function SameSHA2(A,B: TSHA2Hash): Boolean;
+class Function TSHA224Hash.SHA224FromLE(SHA224: TSHA224): TSHA224;
 begin
-If A.HashSize = B.HashSize then
-  case A.HashSize of
-    sha224:     Result := SameSHA2(A.Hash224,B.Hash224);
-    sha256:     Result := SameSHA2(A.Hash256,B.Hash256);
-    sha384:     Result := SameSHA2(A.Hash384,B.Hash384);
-    sha512:     Result := SameSHA2(A.Hash512,B.Hash512);
-    sha512_224: Result := SameSHA2(A.Hash512_224,B.Hash512_224);
-    sha512_256: Result := SameSHA2(A.Hash512_256,B.Hash512_256);
-  else
-    raise Exception.CreateFmt('SameSHA2: Unknown hash size (%d)',[Ord(A.HashSize)]);
-  end
-else Result := False;
-end;
-
-//==============================================================================
-
-Function BinaryCorrectSHA2_32(Hash: TSHA2Hash_32): TSHA2Hash_32;
-begin
-Result.PartA := EndianSwap(Hash.PartA);
-Result.PartB := EndianSwap(Hash.PartB);
-Result.PartC := EndianSwap(Hash.PartC);
-Result.PartD := EndianSwap(Hash.PartD);
-Result.PartE := EndianSwap(Hash.PartE);
-Result.PartF := EndianSwap(Hash.PartF);
-Result.PartG := EndianSwap(Hash.PartG);
-Result.PartH := EndianSwap(Hash.PartH);
+Result := SHA224;
 end;
 
 //------------------------------------------------------------------------------
 
-Function BinaryCorrectSHA2_64(Hash: TSHA2Hash_64): TSHA2Hash_64;
+class Function TSHA224Hash.SHA224FromBE(SHA224: TSHA224): TSHA224;
 begin
-Result.PartA := EndianSwap(Hash.PartA);
-Result.PartB := EndianSwap(Hash.PartB);
-Result.PartC := EndianSwap(Hash.PartC);
-Result.PartD := EndianSwap(Hash.PartD);
-Result.PartE := EndianSwap(Hash.PartE);
-Result.PartF := EndianSwap(Hash.PartF);
-Result.PartG := EndianSwap(Hash.PartG);
-Result.PartH := EndianSwap(Hash.PartH);
+Result := SHA224;
 end;
 
 //------------------------------------------------------------------------------
 
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_224): TSHA2Hash_224;
+class Function TSHA224Hash.HashSize: TMemSize;
 begin
-Result := TSHA2Hash_224(BinaryCorrectSHA2_32(TSHA2Hash_32(Hash)));
-end;
-
-//------------------------------------------------------------------------------
-
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_256): TSHA2Hash_256;
-begin
-Result := TSHA2Hash_256(BinaryCorrectSHA2_32(TSHA2Hash_32(Hash)));
+Result := SizeOf(TSHA224);
 end;
  
 //------------------------------------------------------------------------------
 
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_384): TSHA2Hash_384;
+class Function TSHA224Hash.HashName: String;
 begin
-Result := TSHA2Hash_384(BinaryCorrectSHA2_64(TSHA2Hash_64(Hash)));
+Result := 'SHA-224';
 end;
  
 //------------------------------------------------------------------------------
 
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_512): TSHA2Hash_512;
+class Function TSHA224Hash.HashLength: TSHA2Length;
 begin
-Result := TSHA2Hash_512(BinaryCorrectSHA2_64(TSHA2Hash_64(Hash)));
+Result := shal224;
 end;
  
 //------------------------------------------------------------------------------
 
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_512_224): TSHA2Hash_512_224;
+class Function TSHA224Hash.HashObservedSize: TMemSize;
 begin
-Result := TSHA2Hash_512_224(BinaryCorrectSHA2_64(TSHA2Hash_64(Hash)));
+Result := 28; // 224 bits
 end;
- 
+
 //------------------------------------------------------------------------------
 
-Function BinaryCorrectSHA2(Hash: TSHA2Hash_512_256): TSHA2Hash_512_256;
+constructor TSHA224Hash.CreateAndInitFrom(Hash: THashBase);
 begin
-Result := TSHA2Hash_512_256(BinaryCorrectSHA2_64(TSHA2Hash_64(Hash)));
-end;
- 
-//------------------------------------------------------------------------------
-
-Function BinaryCorrectSHA2(Hash: TSHA2Hash): TSHA2Hash;
-begin
-case Hash.HashSize of
-  sha224:     Result.Hash224 := BinaryCorrectSHA2(Hash.Hash224);
-  sha256:     Result.Hash256 := BinaryCorrectSHA2(Hash.Hash256);
-  sha384:     Result.Hash384 := BinaryCorrectSHA2(Hash.Hash384);
-  sha512:     Result.Hash512 := BinaryCorrectSHA2(Hash.Hash512);
-  sha512_224: Result.Hash512_224 := BinaryCorrectSHA2(Hash.Hash512_224);
-  sha512_256: Result.Hash512_256 := BinaryCorrectSHA2(Hash.Hash512_256);
+inherited CreateAndInitFrom(Hash);
+If Hash is TSHA224Hash then
+  fSHA2 := TSHA2Sys_32(TSHA224Hash(Hash).SHA224Sys)
 else
-  raise Exception.CreateFmt('BinaryCorrectSHA2: Unknown hash size (%d)',[Ord(Hash.HashSize)]);
-end;
-end;
-
-//==============================================================================
-//------------------------------------------------------------------------------
-//==============================================================================
-
-procedure BufferSHA2_32(var Hash: TSHA2Hash_32; const Buffer; Size: TMemSize);
-var
-  i:    TMemSize;
-  Buff: PBlockBuffer_32;
-begin
-If Size > 0 then
-  begin
-    If (Size mod BlockSize_32) = 0 then
-      begin
-        Buff := @Buffer;
-        For i := 0 to Pred(Size div BlockSize_32) do
-          begin
-            Hash := BlockHash_32(Hash,Buff^);
-            Inc(Buff);
-          end;
-      end
-    else raise Exception.CreateFmt('BufferSHA2_32: Buffer size is not divisible by %d.',[BlockSize_32]);
-  end;
+  raise ESHA2IncompatibleClass.CreateFmt('TSHA224Hash.CreateAndInitFrom: Incompatible class (%s).',[Hash.ClassName]);
 end;
 
 //------------------------------------------------------------------------------
 
-procedure BufferSHA2_64(var Hash: TSHA2Hash_64; const Buffer; Size: TMemSize);
-var
-  i:    TMemSize;
-  Buff: PBlockBuffer_64;
+constructor TSHA224Hash.CreateAndInitFrom(Hash: TSHA2);
 begin
-If Size > 0 then
-  begin
-    If (Size mod BlockSize_64) = 0 then
-      begin
-        Buff := @Buffer;
-        For i := 0 to Pred(Size div BlockSize_64) do
-          begin
-            Hash := BlockHash_64(Hash,Buff^);
-            Inc(Buff);
-          end;
-      end
-    else raise Exception.CreateFmt('BufferSHA2_64: Buffer size is not divisible by %d.',[BlockSize_32]);
-  end;
-end;
-
-//------------------------------------------------------------------------------
-
-procedure BufferSHA2(var Hash: TSHA2Hash_224; const Buffer; Size: TMemSize);
-begin
-BufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size);
-end;
-
-//------------------------------------------------------------------------------
-
-procedure BufferSHA2(var Hash: TSHA2Hash_256; const Buffer; Size: TMemSize);
-begin
-BufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size);
-end;
-
-//------------------------------------------------------------------------------
-
-procedure BufferSHA2(var Hash: TSHA2Hash_384; const Buffer; Size: TMemSize);
-begin
-BufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size);
-end;
-
-//------------------------------------------------------------------------------
-
-procedure BufferSHA2(var Hash: TSHA2Hash_512; const Buffer; Size: TMemSize);
-begin
-BufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size);
-end;
-
-//------------------------------------------------------------------------------
-
-procedure BufferSHA2(var Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize);
-begin
-BufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size);
-end;
-
-//------------------------------------------------------------------------------
-
-procedure BufferSHA2(var Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize);
-begin
-BufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size);
-end;
-
-//------------------------------------------------------------------------------
-
-procedure BufferSHA2(var Hash: TSHA2Hash; const Buffer; Size: TMemSize);
-begin
-case Hash.HashSize of
-  sha224:     BufferSHA2(Hash.Hash224,Buffer,Size);
-  sha256:     BufferSHA2(Hash.Hash256,Buffer,Size);
-  sha384:     BufferSHA2(Hash.Hash384,Buffer,Size);
-  sha512:     BufferSHA2(Hash.Hash512,Buffer,Size);
-  sha512_224: BufferSHA2(Hash.Hash512_224,Buffer,Size);
-  sha512_256: BufferSHA2(Hash.Hash512_256,Buffer,Size);
+CreateAndInit;
+If Hash.HashLength = HashLength then
+  fSHA2 := TSHA2Sys_32(SHA224ToSys(Hash.SHA224))
 else
-  raise Exception.CreateFmt('BufferSHA2: Unknown hash size (%d)',[Ord(Hash.HashSize)]);
-end;
+  raise ESHA2IncompatibleLength.CreateFmt('TSHA224Hash.CreateAndInitFrom: Incompatible length (%d).',[Ord(Hash.HashLength)]);
 end;
 
-//==============================================================================
+//------------------------------------------------------------------------------
 
-Function LastBufferSHA2_32(Hash: TSHA2Hash_32; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2Hash_32;
-var
-  FullBlocks:     TMemSize;
-  LastBlockSize:  TMemSize;
-  HelpBlocks:     TMemSize;
-  HelpBlocksBuff: Pointer;
+constructor TSHA224Hash.CreateAndInitFrom(Hash: TSHA224);
 begin
-Result := Hash;
-FullBlocks := Size div BlockSize_32;
-If FullBlocks > 0 then BufferSHA2_32(Result,Buffer,FullBlocks * BlockSize_32);
-LastBlockSize := Size - (UInt64(FullBlocks) * BlockSize_32);
-HelpBlocks := Ceil((LastBlockSize + SizeOf(UInt64) + 1) / BlockSize_32);
-HelpBlocksBuff := AllocMem(HelpBlocks * BlockSize_32);
+CreateAndInit;
+fSHA2 := TSHA2Sys_32(SHA224ToSys(Hash));
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA224Hash.Init;
+begin
+inherited;
+fSHA2 := TSHA2Sys_32(SHA224ToSys(InitialSHA224));
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA224Hash.FromStringDef(const Str: String; const Default: TSHA224);
+begin
+inherited FromStringDef(Str,Default);
+If not TryFromString(Str) then
+  fSHA2 := TSHA2Sys_32(SHA224ToSys(ZeroSHA224));
+end;
+
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                   TSHA256Hash                                  
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA256Hash - class implementation
+===============================================================================}
+{-------------------------------------------------------------------------------
+    TSHA256Hash - protected methods
+-------------------------------------------------------------------------------}
+
+Function TSHA256Hash.GetHashBuffer: TSHA2HashBuffer;
+var
+  Temp: TSHA256;
+begin
+Temp := SHA256FromSys(TSHA256Sys(fSHA2));
+FillChar(Result,SizeOf(TSHA2HashBuffer),0);
+Move(Temp,Result,HashSize);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA256Hash.SetHashBuffer(HashBuffer: TSHA2HashBuffer);
+var
+  Temp: TSHA256;
+begin
+Move(HashBuffer,Temp,HashSize);
+fSHA2 := TSHA2Sys_32(SHA256ToSys(Temp));
+end;
+
+//------------------------------------------------------------------------------
+
+Function TSHA256Hash.GetSHA256: TSHA256;
+begin
+Result := SHA256FromSys(TSHA256Sys(fSHA2));
+end;
+
+//------------------------------------------------------------------------------
+
+Function TSHA256Hash.GetSHA256Sys: TSHA256Sys;
+begin
+Result := TSHA256Sys(fSHA2);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA256Hash.Initialize;
+begin
+inherited;
+fSHA2 := TSHA2Sys_32(SHA256ToSys(ZeroSHA256));
+end;
+
+{-------------------------------------------------------------------------------
+    TSHA256Hash - public methods
+-------------------------------------------------------------------------------}
+
+class Function TSHA256Hash.SHA256ToSys(SHA256: TSHA256): TSHA256Sys;
+var
+  Temp: TSHA256Sys absolute SHA256;
+begin
+Result := Temp;
+{$IFNDEF ENDIAN_BIG}
+EndianSwapValue(TSHA2Sys_32(Result));
+{$ENDIF}
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA256Hash.SHA256FromSys(SHA256: TSHA256Sys): TSHA256;
+var
+  Temp: TSHA256Sys absolute Result;
+begin
+Temp := SHA256;
+{$IFNDEF ENDIAN_BIG}
+EndianSwapValue(TSHA2Sys_32(Temp));
+{$ENDIF}
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA256Hash.SHA256ToLE(SHA256: TSHA256): TSHA256;
+begin
+Result := SHA256;
+end; 
+
+//------------------------------------------------------------------------------
+
+class Function TSHA256Hash.SHA256ToBE(SHA256: TSHA256): TSHA256;
+begin
+Result := SHA256;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA256Hash.SHA256FromLE(SHA256: TSHA256): TSHA256;
+begin
+Result := SHA256;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA256Hash.SHA256FromBE(SHA256: TSHA256): TSHA256;
+begin
+Result := SHA256;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA256Hash.HashSize: TMemSize;
+begin
+Result := SizeOf(TSHA256);
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TSHA256Hash.HashName: String;
+begin
+Result := 'SHA-256';
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TSHA256Hash.HashLength: TSHA2Length;
+begin
+Result := shal256;
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TSHA256Hash.HashObservedSize: TMemSize;
+begin
+Result := 32; // 256 bits
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TSHA256Hash.CreateAndInitFrom(Hash: THashBase);
+begin
+inherited CreateAndInitFrom(Hash);
+If Hash is TSHA256Hash then
+  fSHA2 := TSHA2Sys_32(TSHA256Hash(Hash).SHA256Sys)
+else
+  raise ESHA2IncompatibleClass.CreateFmt('TSHA256Hash.CreateAndInitFrom: Incompatible class (%s).',[Hash.ClassName]);
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TSHA256Hash.CreateAndInitFrom(Hash: TSHA2);
+begin
+CreateAndInit;
+If Hash.HashLength = HashLength then
+  fSHA2 := TSHA2Sys_32(SHA256ToSys(Hash.SHA256))
+else
+  raise ESHA2IncompatibleLength.CreateFmt('TSHA256Hash.CreateAndInitFrom: Incompatible length (%d).',[Ord(Hash.HashLength)]);
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TSHA256Hash.CreateAndInitFrom(Hash: TSHA256);
+begin
+CreateAndInit;
+fSHA2 := TSHA2Sys_32(SHA256ToSys(Hash));
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA256Hash.Init;
+begin
+inherited;
+fSHA2 := TSHA2Sys_32(SHA256ToSys(InitialSHA256));
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA256Hash.FromStringDef(const Str: String; const Default: TSHA256);
+begin
+inherited FromStringDef(Str,Default);
+If not TryFromString(Str) then
+  fSHA2 := TSHA2Sys_32(SHA256ToSys(ZeroSHA256));
+end;
+
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                   TSHA384Hash                                  
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA384Hash - class implementation
+===============================================================================}
+{-------------------------------------------------------------------------------
+    TSHA384Hash - protected methods
+-------------------------------------------------------------------------------}
+
+Function TSHA384Hash.GetHashBuffer: TSHA2HashBuffer;
+var
+  Temp: TSHA384;
+begin
+Temp := SHA384FromSys(TSHA384Sys(fSHA2));
+FillChar(Result,SizeOf(TSHA2HashBuffer),0);
+Move(Temp,Result,HashSize);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA384Hash.SetHashBuffer(HashBuffer: TSHA2HashBuffer);
+var
+  Temp: TSHA384;
+begin
+Move(HashBuffer,Temp,HashSize);
+fSHA2 := TSHA2Sys_64(SHA384ToSys(Temp));
+end;
+
+//------------------------------------------------------------------------------
+
+Function TSHA384Hash.GetSHA384: TSHA384;
+begin
+Result := SHA384FromSys(TSHA384Sys(fSHA2));
+end;
+
+//------------------------------------------------------------------------------
+
+Function TSHA384Hash.GetSHA384Sys: TSHA384Sys;
+begin
+Result := TSHA384Sys(fSHA2);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA384Hash.Initialize;
+begin
+inherited;
+fSHA2 := TSHA2Sys_64(SHA384ToSys(ZeroSHA384));
+end;
+
+{-------------------------------------------------------------------------------
+    TSHA384Hash - public methods
+-------------------------------------------------------------------------------}
+
+class Function TSHA384Hash.SHA384ToSys(SHA384: TSHA384): TSHA384Sys;
+var
+  Temp: TSHA384Sys absolute SHA384;
+begin
+Result := Temp;
+{$IFNDEF ENDIAN_BIG}
+EndianSwapValue(TSHA2Sys_64(Result));
+{$ENDIF}
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA384Hash.SHA384FromSys(SHA384: TSHA384Sys): TSHA384;
+var
+  Temp: TSHA384Sys absolute Result;
+begin
+Temp := SHA384;
+{$IFNDEF ENDIAN_BIG}
+EndianSwapValue(TSHA2Sys_64(Temp));
+{$ENDIF}
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA384Hash.SHA384ToLE(SHA384: TSHA384): TSHA384;
+begin
+Result := SHA384;
+end; 
+
+//------------------------------------------------------------------------------
+
+class Function TSHA384Hash.SHA384ToBE(SHA384: TSHA384): TSHA384;
+begin
+Result := SHA384;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA384Hash.SHA384FromLE(SHA384: TSHA384): TSHA384;
+begin
+Result := SHA384;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA384Hash.SHA384FromBE(SHA384: TSHA384): TSHA384;
+begin
+Result := SHA384;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA384Hash.HashSize: TMemSize;
+begin
+Result := SizeOf(TSHA384);
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TSHA384Hash.HashName: String;
+begin
+Result := 'SHA-384';
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TSHA384Hash.HashLength: TSHA2Length;
+begin
+Result := shal384;
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TSHA384Hash.HashObservedSize: TMemSize;
+begin
+Result := 48; // 384 bits
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TSHA384Hash.CreateAndInitFrom(Hash: THashBase);
+begin
+inherited CreateAndInitFrom(Hash);
+If Hash is TSHA384Hash then
+  fSHA2 := TSHA2Sys_64(TSHA384Hash(Hash).SHA384Sys)
+else
+  raise ESHA2IncompatibleClass.CreateFmt('TSHA384Hash.CreateAndInitFrom: Incompatible class (%s).',[Hash.ClassName]);
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TSHA384Hash.CreateAndInitFrom(Hash: TSHA2);
+begin
+CreateAndInit;
+If Hash.HashLength = HashLength then
+  fSHA2 := TSHA2Sys_64(SHA384ToSys(Hash.SHA384))
+else
+  raise ESHA2IncompatibleLength.CreateFmt('TSHA384Hash.CreateAndInitFrom: Incompatible length (%d).',[Ord(Hash.HashLength)]);
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TSHA384Hash.CreateAndInitFrom(Hash: TSHA384);
+begin
+CreateAndInit;
+fSHA2 := TSHA2Sys_64(SHA384ToSys(Hash));
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA384Hash.Init;
+begin
+inherited;
+fSHA2 := TSHA2Sys_64(SHA384ToSys(InitialSHA384));
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA384Hash.FromStringDef(const Str: String; const Default: TSHA384);
+begin
+inherited FromStringDef(Str,Default);
+If not TryFromString(Str) then
+  fSHA2 := TSHA2Sys_64(SHA384ToSys(ZeroSHA384));
+end;
+
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                   TSHA512Hash                                  
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA512Hash - class implementation
+===============================================================================}
+{-------------------------------------------------------------------------------
+    TSHA512Hash - protected methods
+-------------------------------------------------------------------------------}
+
+Function TSHA512Hash.GetHashBuffer: TSHA2HashBuffer;
+var
+  Temp: TSHA512;
+begin
+Temp := SHA512FromSys(TSHA512Sys(fSHA2));
+FillChar(Result,SizeOf(TSHA2HashBuffer),0);
+Move(Temp,Result,HashSize);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA512Hash.SetHashBuffer(HashBuffer: TSHA2HashBuffer);
+var
+  Temp: TSHA512;
+begin
+Move(HashBuffer,Temp,HashSize);
+fSHA2 := TSHA2Sys_64(SHA512ToSys(Temp));
+end;
+
+//------------------------------------------------------------------------------
+
+Function TSHA512Hash.GetSHA512: TSHA512;
+begin
+Result := SHA512FromSys(TSHA512Sys(fSHA2));
+end;
+
+//------------------------------------------------------------------------------
+
+Function TSHA512Hash.GetSHA512Sys: TSHA512Sys;
+begin
+Result := TSHA512Sys(fSHA2);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA512Hash.Initialize;
+begin
+inherited;
+fSHA2 := TSHA2Sys_64(SHA512ToSys(ZeroSHA512));
+end;
+
+{-------------------------------------------------------------------------------
+    TSHA512Hash - public methods
+-------------------------------------------------------------------------------}
+
+class Function TSHA512Hash.SHA512ToSys(SHA512: TSHA512): TSHA512Sys;
+var
+  Temp: TSHA512Sys absolute SHA512;
+begin
+Result := Temp;
+{$IFNDEF ENDIAN_BIG}
+EndianSwapValue(TSHA2Sys_64(Result));
+{$ENDIF}
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512Hash.SHA512FromSys(SHA512: TSHA512Sys): TSHA512;
+var
+  Temp: TSHA512Sys absolute Result;
+begin
+Temp := SHA512;
+{$IFNDEF ENDIAN_BIG}
+EndianSwapValue(TSHA2Sys_64(Temp));
+{$ENDIF}
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512Hash.SHA512ToLE(SHA512: TSHA512): TSHA512;
+begin
+Result := SHA512;
+end; 
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512Hash.SHA512ToBE(SHA512: TSHA512): TSHA512;
+begin
+Result := SHA512;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512Hash.SHA512FromLE(SHA512: TSHA512): TSHA512;
+begin
+Result := SHA512;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512Hash.SHA512FromBE(SHA512: TSHA512): TSHA512;
+begin
+Result := SHA512;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512Hash.HashSize: TMemSize;
+begin
+Result := SizeOf(TSHA512);
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TSHA512Hash.HashName: String;
+begin
+Result := 'SHA-512';
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TSHA512Hash.HashLength: TSHA2Length;
+begin
+Result := shal512;
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TSHA512Hash.HashObservedSize: TMemSize;
+begin
+Result := 64; // 512 bits
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TSHA512Hash.CreateAndInitFrom(Hash: THashBase);
+begin
+inherited CreateAndInitFrom(Hash);
+If Hash is TSHA512Hash then
+  fSHA2 := TSHA2Sys_64(TSHA512Hash(Hash).SHA512Sys)
+else
+  raise ESHA2IncompatibleClass.CreateFmt('TSHA512Hash.CreateAndInitFrom: Incompatible class (%s).',[Hash.ClassName]);
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TSHA512Hash.CreateAndInitFrom(Hash: TSHA2);
+begin
+CreateAndInit;
+If Hash.HashLength = HashLength then
+  fSHA2 := TSHA2Sys_64(SHA512ToSys(Hash.SHA512))
+else
+  raise ESHA2IncompatibleLength.CreateFmt('TSHA512Hash.CreateAndInitFrom: Incompatible length (%d).',[Ord(Hash.HashLength)]);
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TSHA512Hash.CreateAndInitFrom(Hash: TSHA512);
+begin
+CreateAndInit;
+fSHA2 := TSHA2Sys_64(SHA512ToSys(Hash));
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA512Hash.Init;
+begin
+inherited;
+fSHA2 := TSHA2Sys_64(SHA512ToSys(InitialSHA512));
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA512Hash.FromStringDef(const Str: String; const Default: TSHA512);
+begin
+inherited FromStringDef(Str,Default);
+If not TryFromString(Str) then
+  fSHA2 := TSHA2Sys_64(SHA512ToSys(ZeroSHA512));
+end;
+
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                 TSHA512_224Hash
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA512_224Hash - class implementation
+===============================================================================}
+{-------------------------------------------------------------------------------
+    TSHA512_224Hash - protected methods
+-------------------------------------------------------------------------------}
+
+Function TSHA512_224Hash.GetHashBuffer: TSHA2HashBuffer;
+var
+  Temp: TSHA512_224;
+begin
+Temp := SHA512_224FromSys(TSHA512_224Sys(fSHA2));
+FillChar(Result,SizeOf(TSHA2HashBuffer),0);
+Move(Temp,Result,HashSize);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA512_224Hash.SetHashBuffer(HashBuffer: TSHA2HashBuffer);
+var
+  Temp: TSHA512_224;
+begin
+Move(HashBuffer,Temp,HashSize);
+fSHA2 := TSHA2Sys_64(SHA512_224ToSys(Temp));
+end;
+
+//------------------------------------------------------------------------------
+
+Function TSHA512_224Hash.GetSHA512_224: TSHA512_224;
+begin
+Result := SHA512_224FromSys(TSHA512_224Sys(fSHA2));
+end;
+
+//------------------------------------------------------------------------------
+
+Function TSHA512_224Hash.GetSHA512_224Sys: TSHA512_224Sys;
+begin
+Result := TSHA512_224Sys(fSHA2);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA512_224Hash.Initialize;
+begin
+inherited;
+fSHA2 := TSHA2Sys_64(SHA512_224ToSys(ZeroSHA512_224));
+end;
+
+{-------------------------------------------------------------------------------
+    TSHA512_224Hash - public methods
+-------------------------------------------------------------------------------}
+
+class Function TSHA512_224Hash.SHA512_224ToSys(SHA512_224: TSHA512_224): TSHA512_224Sys;
+var
+  Temp: TSHA512_224Sys absolute SHA512_224;
+begin
+Result := Temp;
+{$IFNDEF ENDIAN_BIG}
+EndianSwapValue(TSHA2Sys_64(Result));
+{$ENDIF}
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512_224Hash.SHA512_224FromSys(SHA512_224: TSHA512_224Sys): TSHA512_224;
+var
+  Temp: TSHA512_224Sys absolute Result;
+begin
+Temp := SHA512_224;
+{$IFNDEF ENDIAN_BIG}
+EndianSwapValue(TSHA2Sys_64(Temp));
+{$ENDIF}
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512_224Hash.SHA512_224ToLE(SHA512_224: TSHA512_224): TSHA512_224;
+begin
+Result := SHA512_224;
+end; 
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512_224Hash.SHA512_224ToBE(SHA512_224: TSHA512_224): TSHA512_224;
+begin
+Result := SHA512_224;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512_224Hash.SHA512_224FromLE(SHA512_224: TSHA512_224): TSHA512_224;
+begin
+Result := SHA512_224;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512_224Hash.SHA512_224FromBE(SHA512_224: TSHA512_224): TSHA512_224;
+begin
+Result := SHA512_224;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512_224Hash.HashSize: TMemSize;
+begin
+Result := SizeOf(TSHA512_224);
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TSHA512_224Hash.HashName: String;
+begin
+Result := 'SHA-512/224';
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TSHA512_224Hash.HashLength: TSHA2Length;
+begin
+Result := shal512_224;
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TSHA512_224Hash.HashObservedSize: TMemSize;
+begin
+Result := 28; // 224 bits
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TSHA512_224Hash.CreateAndInitFrom(Hash: THashBase);
+begin
+inherited CreateAndInitFrom(Hash);
+If Hash is TSHA512_224Hash then
+  fSHA2 := TSHA2Sys_64(TSHA512_224Hash(Hash).SHA512_224Sys)
+else
+  raise ESHA2IncompatibleClass.CreateFmt('TSHA512_224Hash.CreateAndInitFrom: Incompatible class (%s).',[Hash.ClassName]);
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TSHA512_224Hash.CreateAndInitFrom(Hash: TSHA2);
+begin
+CreateAndInit;
+If Hash.HashLength = HashLength then
+  fSHA2 := TSHA2Sys_64(SHA512_224ToSys(Hash.SHA512_224))
+else
+  raise ESHA2IncompatibleLength.CreateFmt('TSHA512_224Hash.CreateAndInitFrom: Incompatible length (%d).',[Ord(Hash.HashLength)]);
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TSHA512_224Hash.CreateAndInitFrom(Hash: TSHA512_224);
+begin
+CreateAndInit;
+fSHA2 := TSHA2Sys_64(SHA512_224ToSys(Hash));
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA512_224Hash.Init;
+begin
+inherited;
+fSHA2 := TSHA2Sys_64(SHA512_224ToSys(InitialSHA512_224));
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA512_224Hash.FromStringDef(const Str: String; const Default: TSHA512_224);
+begin
+inherited FromStringDef(Str,Default);
+If not TryFromString(Str) then
+  fSHA2 := TSHA2Sys_64(SHA512_224ToSys(ZeroSHA512_224));
+end;
+
+
+{-------------------------------------------------------------------------------
+================================================================================
+                                 TSHA512_256Hash
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TSHA512_256Hash - class implementation
+===============================================================================}
+{-------------------------------------------------------------------------------
+    TSHA512_256Hash - protected methods
+-------------------------------------------------------------------------------}
+
+Function TSHA512_256Hash.GetHashBuffer: TSHA2HashBuffer;
+var
+  Temp: TSHA512_256;
+begin
+Temp := SHA512_256FromSys(TSHA512_256Sys(fSHA2));
+FillChar(Result,SizeOf(TSHA2HashBuffer),0);
+Move(Temp,Result,HashSize);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA512_256Hash.SetHashBuffer(HashBuffer: TSHA2HashBuffer);
+var
+  Temp: TSHA512_256;
+begin
+Move(HashBuffer,Temp,HashSize);
+fSHA2 := TSHA2Sys_64(SHA512_256ToSys(Temp));
+end;
+
+//------------------------------------------------------------------------------
+
+Function TSHA512_256Hash.GetSHA512_256: TSHA512_256;
+begin
+Result := SHA512_256FromSys(TSHA512_256Sys(fSHA2));
+end;
+
+//------------------------------------------------------------------------------
+
+Function TSHA512_256Hash.GetSHA512_256Sys: TSHA512_256Sys;
+begin
+Result := TSHA512_256Sys(fSHA2);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA512_256Hash.Initialize;
+begin
+inherited;
+fSHA2 := TSHA2Sys_64(SHA512_256ToSys(ZeroSHA512_256));
+end;
+
+{-------------------------------------------------------------------------------
+    TSHA512_256Hash - public methods
+-------------------------------------------------------------------------------}
+
+class Function TSHA512_256Hash.SHA512_256ToSys(SHA512_256: TSHA512_256): TSHA512_256Sys;
+var
+  Temp: TSHA512_256Sys absolute SHA512_256;
+begin
+Result := Temp;
+{$IFNDEF ENDIAN_BIG}
+EndianSwapValue(TSHA2Sys_64(Result));
+{$ENDIF}
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512_256Hash.SHA512_256FromSys(SHA512_256: TSHA512_256Sys): TSHA512_256;
+var
+  Temp: TSHA512_256Sys absolute Result;
+begin
+Temp := SHA512_256;
+{$IFNDEF ENDIAN_BIG}
+EndianSwapValue(TSHA2Sys_64(Temp));
+{$ENDIF}
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512_256Hash.SHA512_256ToLE(SHA512_256: TSHA512_256): TSHA512_256;
+begin
+Result := SHA512_256;
+end; 
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512_256Hash.SHA512_256ToBE(SHA512_256: TSHA512_256): TSHA512_256;
+begin
+Result := SHA512_256;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512_256Hash.SHA512_256FromLE(SHA512_256: TSHA512_256): TSHA512_256;
+begin
+Result := SHA512_256;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512_256Hash.SHA512_256FromBE(SHA512_256: TSHA512_256): TSHA512_256;
+begin
+Result := SHA512_256;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TSHA512_256Hash.HashSize: TMemSize;
+begin
+Result := SizeOf(TSHA512_256);
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TSHA512_256Hash.HashName: String;
+begin
+Result := 'SHA-512/256';
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TSHA512_256Hash.HashLength: TSHA2Length;
+begin
+Result := shal512_256;
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TSHA512_256Hash.HashObservedSize: TMemSize;
+begin
+Result := 32; // 256 bits
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TSHA512_256Hash.CreateAndInitFrom(Hash: THashBase);
+begin
+inherited CreateAndInitFrom(Hash);
+If Hash is TSHA512_256Hash then
+  fSHA2 := TSHA2Sys_64(TSHA512_256Hash(Hash).SHA512_256Sys)
+else
+  raise ESHA2IncompatibleClass.CreateFmt('TSHA512_256Hash.CreateAndInitFrom: Incompatible class (%s).',[Hash.ClassName]);
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TSHA512_256Hash.CreateAndInitFrom(Hash: TSHA2);
+begin
+CreateAndInit;
+If Hash.HashLength = HashLength then
+  fSHA2 := TSHA2Sys_64(SHA512_256ToSys(Hash.SHA512_256))
+else
+  raise ESHA2IncompatibleLength.CreateFmt('TSHA512_256Hash.CreateAndInitFrom: Incompatible length (%d).',[Ord(Hash.HashLength)]);
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TSHA512_256Hash.CreateAndInitFrom(Hash: TSHA512_256);
+begin
+CreateAndInit;
+fSHA2 := TSHA2Sys_64(SHA512_256ToSys(Hash));
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA512_256Hash.Init;
+begin
+inherited;
+fSHA2 := TSHA2Sys_64(SHA512_256ToSys(InitialSHA512_256));
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA512_256Hash.FromStringDef(const Str: String; const Default: TSHA512_256);
+begin
+inherited FromStringDef(Str,Default);
+If not TryFromString(Str) then
+  fSHA2 := TSHA2Sys_64(SHA512_256ToSys(ZeroSHA512_256));
+end;
+
+
+{===============================================================================
+    Backward compatibility functions
+===============================================================================}
+{-------------------------------------------------------------------------------
+    Backward compatibility functions - auxiliary functions
+-------------------------------------------------------------------------------}
+
+Function InitialSHA2_512_224: TSHA512_224;
+var
+  Hash:     TSHA512Hash;
+  EvalStr:  AnsiString;
+begin
+Hash := TSHA512Hash.CreateAndInitFrom(InitialSHA512mod);
 try
-{$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
-  Move(Pointer(PtrUInt(@Buffer) + (FullBlocks * BlockSize_32))^,HelpBlocksBuff^,LastBlockSize);
-  PUInt8(PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
-  PUInt64(PtrUInt(HelpBlocksBuff) + (UInt64(HelpBlocks) * BlockSize_32) - SizeOf(UInt64))^ := EndianSwap(MessageLength);
-{$IFDEF FPCDWM}{$POP}{$ENDIF}
-  BufferSHA2_32(Result,HelpBlocksBuff^,HelpBlocks * BlockSize_32);
+  EvalStr := StrToAnsi('SHA-512/224');
+  Hash.Final(PAnsiChar(EvalStr)^,Length(EvalStr) * SizeOf(AnsiChar));
+  Result := Hash.SHA2.SHA512_224;
 finally
-  FreeMem(HelpBlocksBuff,HelpBlocks * BlockSize_32);
+  Hash.Free;
 end;
 end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferSHA2_64(Hash: TSHA2Hash_64; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_64;
+Function InitialSHA2_512_256: TSHA512_256;
 var
-  FullBlocks:     TMemSize;
-  LastBlockSize:  TMemSize;
-  HelpBlocks:     TMemSize;
-  HelpBlocksBuff: Pointer;
+  Hash:     TSHA512Hash;
+  EvalStr:  AnsiString;
 begin
-Result := Hash;
-FullBlocks := Size div BlockSize_64;
-If FullBlocks > 0 then BufferSHA2_64(Result,Buffer,FullBlocks * BlockSize_64);
-LastBlockSize := Size - (UInt64(FullBlocks) * BlockSize_64);
-HelpBlocks := Ceil((LastBlockSize + SizeOf(OctaWord) + 1) / BlockSize_64);
-HelpBlocksBuff := AllocMem(HelpBlocks * BlockSize_64);
+Hash := TSHA512Hash.CreateAndInitFrom(InitialSHA512mod);
 try
-{$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
-  Move(Pointer(PtrUInt(@Buffer) + (FullBlocks * BlockSize_64))^,HelpBlocksBuff^,LastBlockSize);
-  PUInt8(PtrUInt(HelpBlocksBuff) + LastBlockSize)^ := $80;
-  POctaWord(PtrUInt(HelpBlocksBuff) + (UInt64(HelpBlocks) * BlockSize_64) - SizeOf(OctaWord))^ := EndianSwap(MessageLength);
-{$IFDEF FPCDWM}{$POP}{$ENDIF}
-  BufferSHA2_64(Result,HelpBlocksBuff^,HelpBlocks * BlockSize_64);
+  EvalStr := StrToAnsi('SHA-512/256');
+  Hash.Final(PAnsiChar(EvalStr)^,Length(EvalStr) * SizeOf(AnsiChar));
+  Result := Hash.SHA2.SHA512_256;
 finally
-  FreeMem(HelpBlocksBuff,HelpBlocks * BlockSize_64);
+  Hash.Free;
 end;
 end;
 
-//------------------------------------------------------------------------------
+{-------------------------------------------------------------------------------
+    Backward compatibility functions - utility functions
+-------------------------------------------------------------------------------}
 
-Function LastBufferSHA2(Hash: TSHA2Hash_224; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2Hash_224;
-begin
-Result := TSHA2Hash_224(LastBufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size,MessageLength));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_256; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2Hash_256;
-begin
-Result := TSHA2Hash_256(LastBufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size,MessageLength));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_384;
-begin
-Result := TSHA2Hash_384(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,MessageLength));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_512;
-begin
-Result := TSHA2Hash_512(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,MessageLength));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_512_224;
-begin
-Result := TSHA2Hash_512_224(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,MessageLength));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_512_256;
-begin
-Result := TSHA2Hash_512_256(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,MessageLength));
-end;
-
-//==============================================================================
-
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_384;
-begin
-Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,0));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_512;
-begin
-Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,0));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_512_224;
-begin
-Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,0));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_512_256;
-begin
-Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,0));
-end;
-
-//==============================================================================
-
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_384;
-begin
-Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_512;
-begin
-Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_512_224;
-begin
-Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_512_256;
-begin
-Result := LastBufferSHA2(Hash,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
-end;
-
-//==============================================================================
-
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2Hash;
-begin
-Result.HashSize := Hash.HashSize;
-case Hash.HashSize of
-  sha224:     Result.Hash224 := LastBufferSHA2(Hash.Hash224,Buffer,Size,MessageLength);
-  sha256:     Result.Hash256 := LastBufferSHA2(Hash.Hash256,Buffer,Size,MessageLength);
-  sha384:     Result.Hash384 := LastBufferSHA2(Hash.Hash384,Buffer,Size,BuildOctaWord(MessageLength,0));
-  sha512:     Result.Hash512 := LastBufferSHA2(Hash.Hash512,Buffer,Size,BuildOctaWord(MessageLength,0));
-  sha512_224: Result.Hash512_224 := LastBufferSHA2(Hash.Hash512_224,Buffer,Size,BuildOctaWord(MessageLength,0));
-  sha512_256: Result.Hash512_256 := LastBufferSHA2(Hash.Hash512_256,Buffer,Size,BuildOctaWord(MessageLength,0));
-else
-  raise Exception.CreateFmt('LastBufferSHA2: Unknown hash size (%d)',[Ord(Hash.HashSize)]);
-end;
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash;
-begin
-Result.HashSize := Hash.HashSize;
-case Hash.HashSize of
-  sha224:     Result.Hash224 := LastBufferSHA2(Hash.Hash224,Buffer,Size,MessageLengthLo);
-  sha256:     Result.Hash256 := LastBufferSHA2(Hash.Hash256,Buffer,Size,MessageLengthLo);
-  sha384:     Result.Hash384 := LastBufferSHA2(Hash.Hash384,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
-  sha512:     Result.Hash512 := LastBufferSHA2(Hash.Hash512,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
-  sha512_224: Result.Hash512_224 := LastBufferSHA2(Hash.Hash512_224,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
-  sha512_256: Result.Hash512_256 := LastBufferSHA2(Hash.Hash512_256,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
-else
-  raise Exception.CreateFmt('LastBufferSHA2: Unknown hash size (%d)',[Ord(Hash.HashSize)]);
-end;
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash;
-begin
-Result.HashSize := Hash.HashSize;
-case Hash.HashSize of
-  sha224:     Result.Hash224 := LastBufferSHA2(Hash.Hash224,Buffer,Size,MessageLength.Lo);
-  sha256:     Result.Hash256 := LastBufferSHA2(Hash.Hash256,Buffer,Size,MessageLength.Lo);
-  sha384:     Result.Hash384 := LastBufferSHA2(Hash.Hash384,Buffer,Size,MessageLength);
-  sha512:     Result.Hash512 := LastBufferSHA2(Hash.Hash512,Buffer,Size,MessageLength);
-  sha512_224: Result.Hash512_224 := LastBufferSHA2(Hash.Hash512_224,Buffer,Size,MessageLength);
-  sha512_256: Result.Hash512_256 := LastBufferSHA2(Hash.Hash512_256,Buffer,Size,MessageLength);
-else
-  raise Exception.CreateFmt('LastBufferSHA2: Unknown hash size (%d)',[Ord(Hash.HashSize)]);
-end;
-end;
-
-//==============================================================================
-
-Function LastBufferSHA2(Hash: TSHA2Hash_224; const Buffer; Size: TMemSize): TSHA2Hash_224;
-begin
-Result := TSHA2Hash_224(LastBufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size,UInt64(Size) shl 3));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_256; const Buffer; Size: TMemSize): TSHA2Hash_256;
-begin
-Result := TSHA2Hash_256(LastBufferSHA2_32(TSHA2Hash_32(Hash),Buffer,Size,UInt64(Size) shl 3));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize): TSHA2Hash_384;
-begin
-Result := TSHA2Hash_384(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,SizeToMessageLength(Size)));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize): TSHA2Hash_512;
-begin
-Result := TSHA2Hash_512(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,SizeToMessageLength(Size)));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize): TSHA2Hash_512_224;
-begin
-Result := TSHA2Hash_512_224(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,SizeToMessageLength(Size)));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize): TSHA2Hash_512_256;
-begin
-Result := TSHA2Hash_512_256(LastBufferSHA2_64(TSHA2Hash_64(Hash),Buffer,Size,SizeToMessageLength(Size)));
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize): TSHA2Hash;
-begin
-Result.HashSize := Hash.HashSize;
-case Hash.HashSize of
-  sha224:     Result.Hash224 := LastBufferSHA2(Hash.Hash224,Buffer,Size);
-  sha256:     Result.Hash256 := LastBufferSHA2(Hash.Hash256,Buffer,Size);
-  sha384:     Result.Hash384 := LastBufferSHA2(Hash.Hash384,Buffer,Size);
-  sha512:     Result.Hash512 := LastBufferSHA2(Hash.Hash512,Buffer,Size);
-  sha512_224: Result.Hash512_224 := LastBufferSHA2(Hash.Hash512_224,Buffer,Size);
-  sha512_256: Result.Hash512_256 := LastBufferSHA2(Hash.Hash512_256,Buffer,Size);
-else
-  raise Exception.CreateFmt('LastBufferSHA2: Unknown hash size (%d)',[Ord(Hash.HashSize)]);
-end;
-end;
-
-//==============================================================================
-//------------------------------------------------------------------------------
-//==============================================================================
-
-Function BufferSHA2(HashSize: TSHA2HashSize; const Buffer; Size: TMemSize): TSHA2Hash;
-begin
-Result.HashSize := HashSize;
-case HashSize of
-  sha224:     Result.Hash224 := LastBufferSHA2(InitialSHA2_224,Buffer,Size);
-  sha256:     Result.Hash256 := LastBufferSHA2(InitialSHA2_256,Buffer,Size);
-  sha384:     Result.Hash384 := LastBufferSHA2(InitialSHA2_384,Buffer,Size);
-  sha512:     Result.Hash512 := LastBufferSHA2(InitialSHA2_512,Buffer,Size);
-  sha512_224: Result.Hash512_224 := LastBufferSHA2(InitialSHA2_512_224,Buffer,Size);
-  sha512_256: Result.Hash512_256 := LastBufferSHA2(InitialSHA2_512_256,Buffer,Size);
-else
-  raise Exception.CreateFmt('BufferSHA2: Unknown hash size (%d)',[Ord(HashSize)]);
-end;
-end;
-
-//==============================================================================
-
-Function AnsiStringSHA2(HashSize: TSHA2HashSize; const Str: AnsiString): TSHA2Hash;
-begin
-Result := BufferSHA2(HashSize,PAnsiChar(Str)^,Length(Str) * SizeOf(AnsiChar));
-end;
-
-//------------------------------------------------------------------------------
-
-Function WideStringSHA2(HashSize: TSHA2HashSize; const Str: WideString): TSHA2Hash;
-begin
-Result := BufferSHA2(HashSize,PWideChar(Str)^,Length(Str) * SizeOf(WideChar));
-end;
-
-//------------------------------------------------------------------------------
-
-Function StringSHA2(HashSize: TSHA2HashSize; const Str: String): TSHA2Hash;
-begin
-Result := BufferSHA2(HashSize,PChar(Str)^,Length(Str) * SizeOf(Char));
-end;
-
-//==============================================================================
-
-Function StreamSHA2(HashSize: TSHA2HashSize; Stream: TStream; Count: Int64 = -1): TSHA2Hash;
+Function SHA2ToStr(SHA224: TSHA224): String;
 var
-  Buffer:         Pointer;
-  BytesRead:      TMemSize;
-  MessageLength:  OctaWord;
+  Hash: TSHA224Hash;
 begin
-If Assigned(Stream) then
+Hash := TSHA224Hash.CreateAndInitFrom(SHA224);
+try
+  Result := Hash.AsString;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function SHA2ToStr(SHA256: TSHA256): String;
+var
+  Hash: TSHA256Hash;
+begin
+Hash := TSHA256Hash.CreateAndInitFrom(SHA256);
+try
+  Result := Hash.AsString;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function SHA2ToStr(SHA384: TSHA384): String;
+var
+  Hash: TSHA384Hash;
+begin
+Hash := TSHA384Hash.CreateAndInitFrom(SHA384);
+try
+  Result := Hash.AsString;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function SHA2ToStr(SHA512: TSHA512): String;
+var
+  Hash: TSHA512Hash;
+begin
+Hash := TSHA512Hash.CreateAndInitFrom(SHA512);
+try
+  Result := Hash.AsString;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function SHA2ToStr(SHA512_224: TSHA512_224): String;
+var
+  Hash: TSHA512_224Hash;
+begin
+Hash := TSHA512_224Hash.CreateAndInitFrom(SHA512_224);
+try
+  Result := Hash.AsString;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function SHA2ToStr(SHA512_256: TSHA512_256): String;
+var
+  Hash: TSHA512_256Hash;
+begin
+Hash := TSHA512_256Hash.CreateAndInitFrom(SHA512_256);
+try
+  Result := Hash.AsString;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function SHA2ToStr(SHA2: TSHA2): String;
+begin
+case SHA2.HashLength of
+  shal224:      Result := SHA2ToStr(SHA2.SHA224);
+  shal256:      Result := SHA2ToStr(SHA2.SHA256);
+  shal384:      Result := SHA2ToStr(SHA2.SHA384);
+  shal512:      Result := SHA2ToStr(SHA2.SHA512);
+  shal512_224:  Result := SHA2ToStr(SHA2.SHA512_224);
+  shal512_256:  Result := SHA2ToStr(SHA2.SHA512_256);
+else
+  raise ESHA2InvalidLength.CreateFmt('SHA2ToStr: Invalid hash length (%d)',[Ord(SHA2.HashLength)]);
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function StrToSHA2_224(Str: String): TSHA224;
+var
+  Hash: TSHA224Hash;
+begin
+Hash := TSHA224Hash.Create;
+try
+  Hash.FromString(Str);
+  Result := Hash.SHA224;
+finally
+  Hash.Free;
+end;
+end;
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function StrToSHA2_256(Str: String): TSHA256;
+var
+  Hash: TSHA256Hash;
+begin
+Hash := TSHA256Hash.Create;
+try
+  Hash.FromString(Str);
+  Result := Hash.SHA256;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function StrToSHA2_384(Str: String): TSHA384;
+var
+  Hash: TSHA384Hash;
+begin
+Hash := TSHA384Hash.Create;
+try
+  Hash.FromString(Str);
+  Result := Hash.SHA384;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function StrToSHA2_512(Str: String): TSHA512;
+var
+  Hash: TSHA512Hash;
+begin
+Hash := TSHA512Hash.Create;
+try
+  Hash.FromString(Str);
+  Result := Hash.SHA512;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function StrToSHA2_512_224(Str: String): TSHA512_224;
+var
+  Hash: TSHA512_224Hash;
+begin
+Hash := TSHA512_224Hash.Create;
+try
+  Hash.FromString(Str);
+  Result := Hash.SHA512_224;
+finally
+  Hash.Free;
+end;
+end;
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function StrToSHA2_512_256(Str: String): TSHA512_256;
+var
+  Hash: TSHA512_256Hash;
+begin
+Hash := TSHA512_256Hash.Create;
+try
+  Hash.FromString(Str);
+  Result := Hash.SHA512_256;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function StrToSHA2(HashLength: TSHA2Length; Str: String): TSHA2;
+begin
+Result.HashLength := HashLength;
+case HashLength of
+  shal224:      Result.SHA224 := StrToSHA2_224(Str);
+  shal256:      Result.SHA256 := StrToSHA2_256(Str);
+  shal384:      Result.SHA384 := StrToSHA2_384(Str);
+  shal512:      Result.SHA512 := StrToSHA2_512(Str);
+  shal512_224:  Result.SHA512_224 := StrToSHA2_512_224(Str);
+  shal512_256:  Result.SHA512_256 := StrToSHA2_512_256(Str);
+else
+  raise ESHA2InvalidLength.CreateFmt('StrToSHA2: Invalid hash length (%d)',[Ord(HashLength)]);
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function TryStrToSHA2(const Str: String; out SHA224: TSHA224): Boolean;
+var
+  Hash: TSHA224Hash;
+begin
+Hash := TSHA224Hash.Create;
+try
+  Result := Hash.TryFromString(Str);
+  If Result then
+    SHA224 := Hash.SHA224;
+finally
+  Hash.Free;
+end;
+end;
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function TryStrToSHA2(const Str: String; out SHA256: TSHA256): Boolean;
+var
+  Hash: TSHA256Hash;
+begin
+Hash := TSHA256Hash.Create;
+try
+  Result := Hash.TryFromString(Str);
+  If Result then
+    SHA256 := Hash.SHA256;
+finally
+  Hash.Free;
+end;
+end;
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function TryStrToSHA2(const Str: String; out SHA384: TSHA384): Boolean;
+var
+  Hash: TSHA384Hash;
+begin
+Hash := TSHA384Hash.Create;
+try
+  Result := Hash.TryFromString(Str);
+  If Result then
+    SHA384 := Hash.SHA384;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function TryStrToSHA2(const Str: String; out SHA512: TSHA512): Boolean;
+var
+  Hash: TSHA512Hash;
+begin
+Hash := TSHA512Hash.Create;
+try
+  Result := Hash.TryFromString(Str);
+  If Result then
+    SHA512 := Hash.SHA512;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function TryStrToSHA2(const Str: String; out SHA512_224: TSHA512_224): Boolean;
+var
+  Hash: TSHA512_224Hash;
+begin
+Hash := TSHA512_224Hash.Create;
+try
+  Result := Hash.TryFromString(Str);
+  If Result then
+    SHA512_224 := Hash.SHA512_224;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function TryStrToSHA2(const Str: String; out SHA512_256: TSHA512_256): Boolean;
+var
+  Hash: TSHA512_256Hash;
+begin
+Hash := TSHA512_256Hash.Create;
+try
+  Result := Hash.TryFromString(Str);
+  If Result then
+    SHA512_256 := Hash.SHA512_256;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function TryStrToSHA2(HashLength: TSHA2Length; const Str: String; out SHA2: TSHA2): Boolean;
+begin
+case HashLength of
+  shal224:      Result := TryStrToSHA2(Str,SHA2.SHA224);
+  shal256:      Result := TryStrToSHA2(Str,SHA2.SHA256);
+  shal384:      Result := TryStrToSHA2(Str,SHA2.SHA384);
+  shal512:      Result := TryStrToSHA2(Str,SHA2.SHA512);
+  shal512_224:  Result := TryStrToSHA2(Str,SHA2.SHA512_224);
+  shal512_256:  Result := TryStrToSHA2(Str,SHA2.SHA512_256);
+else
+  raise ESHA2InvalidLength.CreateFmt('TryStrToSHA2: Invalid hash length (%d)',[Ord(HashLength)]);
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function StrToSHA2Def(const Str: String; Default: TSHA224): TSHA224;
+var
+  Hash: TSHA224Hash;
+begin
+Hash := TSHA224Hash.Create;
+try
+  Hash.FromStringDef(Str,Default);
+  Result := Hash.SHA224;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function StrToSHA2Def(const Str: String; Default: TSHA256): TSHA256;
+var
+  Hash: TSHA256Hash;
+begin
+Hash := TSHA256Hash.Create;
+try
+  Hash.FromStringDef(Str,Default);
+  Result := Hash.SHA256;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function StrToSHA2Def(const Str: String; Default: TSHA384): TSHA384;
+var
+  Hash: TSHA384Hash;
+begin
+Hash := TSHA384Hash.Create;
+try
+  Hash.FromStringDef(Str,Default);
+  Result := Hash.SHA384;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function StrToSHA2Def(const Str: String; Default: TSHA512): TSHA512;
+var
+  Hash: TSHA512Hash;
+begin
+Hash := TSHA512Hash.Create;
+try
+  Hash.FromStringDef(Str,Default);
+  Result := Hash.SHA512;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function StrToSHA2Def(const Str: String; Default: TSHA512_224): TSHA512_224;
+var
+  Hash: TSHA512_224Hash;
+begin
+Hash := TSHA512_224Hash.Create;
+try
+  Hash.FromStringDef(Str,Default);
+  Result := Hash.SHA512_224;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function StrToSHA2Def(const Str: String; Default: TSHA512_256): TSHA512_256;
+var
+  Hash: TSHA512_256Hash;
+begin
+Hash := TSHA512_256Hash.Create;
+try
+  Hash.FromStringDef(Str,Default);
+  Result := Hash.SHA512_256;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function StrToSHA2Def(HashLength: TSHA2Length; const Str: String; Default: TSHA2): TSHA2;
+begin
+If HashLength = Default.HashLength then
   begin
-    If Count = 0 then
-      Count := Stream.Size - Stream.Position;
-    If Count < 0 then
-      begin
-        Stream.Position := 0;
-        Count := Stream.Size;
-      end;
-    MessageLength := SizeToMessageLength(UInt64(Count));
-    GetMem(Buffer,BufferSize);
-    try
-      Result.HashSize := HashSize;
-      case HashSize of
-        sha224:     Result.Hash224 := InitialSHA2_224;
-        sha256:     Result.Hash256 := InitialSHA2_256;
-        sha384:     Result.Hash384 := InitialSHA2_384;
-        sha512:     Result.Hash512 := InitialSHA2_512;
-        sha512_224: Result.Hash512_224 := InitialSHA2_512_224;
-        sha512_256: Result.Hash512_256 := InitialSHA2_512_256;
-      else
-        raise Exception.CreateFmt('StreamSHA2: Unknown hash size (%d)',[Ord(HashSize)]);
-      end;
-      repeat
-        BytesRead := Stream.Read(Buffer^,Min(BufferSize,Count));
-        If BytesRead < BufferSize then
-          Result := LastBufferSHA2(Result,Buffer^,BytesRead,MessageLength)
-        else
-          BufferSHA2(Result,Buffer^,BytesRead);
-        Dec(Count,BytesRead);
-      until BytesRead < BufferSize;
-    finally
-      FreeMem(Buffer,BufferSize);
+    Result.HashLength := HashLength;
+    case HashLength of
+      shal224:      Result.SHA224 := StrToSHA2Def(Str,Default.SHA224);
+      shal256:      Result.SHA256 := StrToSHA2Def(Str,Default.SHA256);
+      shal384:      Result.SHA384 := StrToSHA2Def(Str,Default.SHA384);
+      shal512:      Result.SHA512 := StrToSHA2Def(Str,Default.SHA512);
+      shal512_224:  Result.SHA512_224 := StrToSHA2Def(Str,Default.SHA512_224);
+      shal512_256:  Result.SHA512_256 := StrToSHA2Def(Str,Default.SHA512_256);
+    else
+      raise ESHA2InvalidLength.CreateFmt('StrToSHA2Def: Invalid hash length (%d)',[Ord(HashLength)]);
     end;
   end
-else raise Exception.Create('StreamSHA2: Stream is not assigned.');
+else raise ESHA2InvalidLength.CreateFmt(
+  'StrToSHA2Def: Requested hash length differs from hash length of default value (%d,%d)',
+  [Ord(HashLength),Ord(Default.HashLength)]);
 end;
 
 //------------------------------------------------------------------------------
 
-Function FileSHA2(HashSize: TSHA2HashSize; const FileName: String): TSHA2Hash;
+Function CompareSHA2(A,B: TSHA224): Integer;
 var
-  FileStream: TFileStream;
+  HashA:  TSHA224Hash;
+  HashB:  TSHA224Hash;
 begin
-FileStream := TFileStream.Create(StrToRTL(FileName), fmOpenRead or fmShareDenyWrite);
+HashA := TSHA224Hash.CreateAndInitFrom(A);
 try
-  Result := StreamSHA2(HashSize,FileStream);
-finally
-  FileStream.Free;
-end;
-end;
-
-//==============================================================================
-//------------------------------------------------------------------------------
-//==============================================================================
-
-Function SHA2_Init(HashSize: TSHA2HashSize): TSHA2Context;
-begin
-Result := AllocMem(SizeOf(TSHA2Context_Internal));
-with PSHA2Context_Internal(Result)^ do
-  begin
-    MessageHash.HashSize := HashSize;
-    case HashSize of
-      sha224:     MessageHash.Hash224 := InitialSHA2_224;
-      sha256:     MessageHash.Hash256 := InitialSHA2_256;
-      sha384:     MessageHash.Hash384 := InitialSHA2_384;
-      sha512:     MessageHash.Hash512 := InitialSHA2_512;
-      sha512_224: MessageHash.Hash512_224 := InitialSHA2_512_224;
-      sha512_256: MessageHash.Hash512_256 := InitialSHA2_512_256;
-    else
-      raise Exception.CreateFmt('SHA2_Hash: Unknown hash size (%d)',[Ord(HashSize)]);
-    end;
-    If HashSize in [sha224,sha256] then
-      ActiveBlockSize := BlockSize_32
-    else
-      ActiveBlockSize := BlockSize_64;
-    MessageLength := ZeroOctaWord;
-    TransferSize := 0;
+  HashB := TSHA224Hash.CreateAndInitFrom(B);
+  try
+    Result := HashA.Compare(HashB);
+  finally
+    HashB.Free;
   end;
+finally
+  HashA.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function CompareSHA2(A,B: TSHA256): Integer;
+var
+  HashA:  TSHA256Hash;
+  HashB:  TSHA256Hash;
+begin
+HashA := TSHA256Hash.CreateAndInitFrom(A);
+try
+  HashB := TSHA256Hash.CreateAndInitFrom(B);
+  try
+    Result := HashA.Compare(HashB);
+  finally
+    HashB.Free;
+  end;
+finally
+  HashA.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function CompareSHA2(A,B: TSHA384): Integer;
+var
+  HashA:  TSHA384Hash;
+  HashB:  TSHA384Hash;
+begin
+HashA := TSHA384Hash.CreateAndInitFrom(A);
+try
+  HashB := TSHA384Hash.CreateAndInitFrom(B);
+  try
+    Result := HashA.Compare(HashB);
+  finally
+    HashB.Free;
+  end;
+finally
+  HashA.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function CompareSHA2(A,B: TSHA512): Integer;
+var
+  HashA:  TSHA512Hash;
+  HashB:  TSHA512Hash;
+begin
+HashA := TSHA512Hash.CreateAndInitFrom(A);
+try
+  HashB := TSHA512Hash.CreateAndInitFrom(B);
+  try
+    Result := HashA.Compare(HashB);
+  finally
+    HashB.Free;
+  end;
+finally
+  HashA.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function CompareSHA2(A,B: TSHA512_224): Integer;
+var
+  HashA:  TSHA512_224Hash;
+  HashB:  TSHA512_224Hash;
+begin
+HashA := TSHA512_224Hash.CreateAndInitFrom(A);
+try
+  HashB := TSHA512_224Hash.CreateAndInitFrom(B);
+  try
+    Result := HashA.Compare(HashB);
+  finally
+    HashB.Free;
+  end;
+finally
+  HashA.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function CompareSHA2(A,B: TSHA512_256): Integer;
+var
+  HashA:  TSHA512_256Hash;
+  HashB:  TSHA512_256Hash;
+begin
+HashA := TSHA512_256Hash.CreateAndInitFrom(A);
+try
+  HashB := TSHA512_256Hash.CreateAndInitFrom(B);
+  try
+    Result := HashA.Compare(HashB);
+  finally
+    HashB.Free;
+  end;
+finally
+  HashA.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function CompareSHA2(A,B: TSHA2): Integer;
+begin
+If A.HashLength = B.HashLength then
+  begin
+    case A.HashLength of
+      shal224:      Result := CompareSHA2(A.SHA224,B.SHA224);
+      shal256:      Result := CompareSHA2(A.SHA256,B.SHA256);
+      shal384:      Result := CompareSHA2(A.SHA384,B.SHA384);
+      shal512:      Result := CompareSHA2(A.SHA512,B.SHA512);
+      shal512_224:  Result := CompareSHA2(A.SHA512_224,B.SHA512_224);
+      shal512_256:  Result := CompareSHA2(A.SHA512_256,B.SHA512_256);
+    else
+      raise ESHA2InvalidLength.CreateFmt('CompareSHA2: Invalid hash length (%d)',[Ord(A.HashLength)]);
+    end;
+  end
+else raise ESHA2InvalidLength.CreateFmt('CompareSHA2: Lengths do not match (%d,%d)',[Ord(A.HashLength),Ord(B.HashLength)]);
+end;
+
+//------------------------------------------------------------------------------
+
+Function SameSHA2(A,B: TSHA224): Boolean;
+var
+  HashA:  TSHA224Hash;
+  HashB:  TSHA224Hash;
+begin
+HashA := TSHA224Hash.CreateAndInitFrom(A);
+try
+  HashB := TSHA224Hash.CreateAndInitFrom(B);
+  try
+    Result := HashA.Same(HashB);
+  finally
+    HashB.Free;
+  end;
+finally
+  HashA.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function SameSHA2(A,B: TSHA256): Boolean;
+var
+  HashA:  TSHA256Hash;
+  HashB:  TSHA256Hash;
+begin
+HashA := TSHA256Hash.CreateAndInitFrom(A);
+try
+  HashB := TSHA256Hash.CreateAndInitFrom(B);
+  try
+    Result := HashA.Same(HashB);
+  finally
+    HashB.Free;
+  end;
+finally
+  HashA.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function SameSHA2(A,B: TSHA384): Boolean;
+var
+  HashA:  TSHA384Hash;
+  HashB:  TSHA384Hash;
+begin
+HashA := TSHA384Hash.CreateAndInitFrom(A);
+try
+  HashB := TSHA384Hash.CreateAndInitFrom(B);
+  try
+    Result := HashA.Same(HashB);
+  finally
+    HashB.Free;
+  end;
+finally
+  HashA.Free;
+end;
+end;
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function SameSHA2(A,B: TSHA512): Boolean;
+var
+  HashA:  TSHA512Hash;
+  HashB:  TSHA512Hash;
+begin
+HashA := TSHA512Hash.CreateAndInitFrom(A);
+try
+  HashB := TSHA512Hash.CreateAndInitFrom(B);
+  try
+    Result := HashA.Same(HashB);
+  finally
+    HashB.Free;
+  end;
+finally
+  HashA.Free;
+end;
+end;
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function SameSHA2(A,B: TSHA512_224): Boolean;
+var
+  HashA:  TSHA512_224Hash;
+  HashB:  TSHA512_224Hash;
+begin
+HashA := TSHA512_224Hash.CreateAndInitFrom(A);
+try
+  HashB := TSHA512_224Hash.CreateAndInitFrom(B);
+  try
+    Result := HashA.Same(HashB);
+  finally
+    HashB.Free;
+  end;
+finally
+  HashA.Free;
+end;
+end;
+   
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function SameSHA2(A,B: TSHA512_256): Boolean;
+var
+  HashA:  TSHA512_256Hash;
+  HashB:  TSHA512_256Hash;
+begin
+HashA := TSHA512_256Hash.CreateAndInitFrom(A);
+try
+  HashB := TSHA512_256Hash.CreateAndInitFrom(B);
+  try
+    Result := HashA.Same(HashB);
+  finally
+    HashB.Free;
+  end;
+finally
+  HashA.Free;
+end;
+end;
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function SameSHA2(A,B: TSHA2): Boolean;
+begin
+If A.HashLength = B.HashLength then
+  begin
+    case A.HashLength of
+      shal224:      Result := SameSHA2(A.SHA224,B.SHA224);
+      shal256:      Result := SameSHA2(A.SHA256,B.SHA256);
+      shal384:      Result := SameSHA2(A.SHA384,B.SHA384);
+      shal512:      Result := SameSHA2(A.SHA512,B.SHA512);
+      shal512_224:  Result := SameSHA2(A.SHA512_224,B.SHA512_224);
+      shal512_256:  Result := SameSHA2(A.SHA512_256,B.SHA512_256);
+    else
+      raise ESHA2InvalidLength.CreateFmt('SameSHA2: Invalid hash length (%d)',[Ord(A.HashLength)]);
+    end;
+  end
+else raise ESHA2InvalidLength.CreateFmt('SameSHA2: Lengths do not match (%d,%d)',[Ord(A.HashLength),Ord(B.HashLength)]);
+end;
+
+//------------------------------------------------------------------------------
+
+Function BinaryCorrectSHA2(SHA224: TSHA224): TSHA224;
+begin
+Result := SHA224;
+end; 
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function BinaryCorrectSHA2(SHA256: TSHA256): TSHA256;
+begin
+Result := SHA256;
+end; 
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function BinaryCorrectSHA2(SHA384: TSHA384): TSHA384;
+begin
+Result := SHA384;
+end; 
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function BinaryCorrectSHA2(SHA512: TSHA512): TSHA512;
+begin
+Result := SHA512;
+end; 
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function BinaryCorrectSHA2(SHA512_224: TSHA512_224): TSHA512_224;
+begin
+Result := SHA512_224;
+end;  
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function BinaryCorrectSHA2(SHA512_256: TSHA512_256): TSHA512_256;
+begin
+Result := SHA512_256;
+end; 
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function BinaryCorrectSHA2(SHA2: TSHA2): TSHA2;
+begin
+Result := SHA2;
+end;
+
+{-------------------------------------------------------------------------------
+    Backward compatibility functions - low-level processing functions
+-------------------------------------------------------------------------------}
+
+{$message 'here'}
+
+{-------------------------------------------------------------------------------
+    Backward compatibility functions - processing functions
+-------------------------------------------------------------------------------}
+
+Function BufferSHA2(HashLength: TSHA2Length; const Buffer; Size: TMemSize): TSHA2;
+var
+  Hash: TSHA2Hash;
+begin
+Hash := CreateFromLength(HashLength);
+try
+  Hash.HashBuffer(Buffer,Size);
+  Result := Hash.SHA2;
+finally
+  Hash.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function AnsiStringSHA2(HashLength: TSHA2Length; const Str: AnsiString): TSHA2;
+var
+  Hash: TSHA2Hash;
+begin
+Hash := CreateFromLength(HashLength);
+try
+  Hash.HashAnsiString(Str);
+  Result := Hash.SHA2;
+finally
+  Hash.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function WideStringSHA2(HashLength: TSHA2Length; const Str: WideString): TSHA2;
+var
+  Hash: TSHA2Hash;
+begin
+Hash := CreateFromLength(HashLength);
+try
+  Hash.HashWideString(Str);
+  Result := Hash.SHA2;
+finally
+  Hash.Free;
+end;
+end;
+ 
+//------------------------------------------------------------------------------
+
+Function StringSHA2(HashLength: TSHA2Length; const Str: String): TSHA2;
+var
+  Hash: TSHA2Hash;
+begin
+Hash := CreateFromLength(HashLength);
+try
+  Hash.HashString(Str);
+  Result := Hash.SHA2;
+finally
+  Hash.Free;
+end;
+end;
+ 
+//------------------------------------------------------------------------------
+
+Function StreamSHA2(HashLength: TSHA2Length; Stream: TStream; Count: Int64 = -1): TSHA2;
+var
+  Hash: TSHA2Hash;
+begin
+Hash := CreateFromLength(HashLength);
+try
+  Hash.HashStream(Stream,Count);
+  Result := Hash.SHA2;
+finally
+  Hash.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function FileSHA2(HashLength: TSHA2Length; const FileName: String): TSHA2;
+var
+  Hash: TSHA2Hash;
+begin
+Hash := CreateFromLength(HashLength);
+try
+  Hash.HashFile(FileName);
+  Result := Hash.SHA2;
+finally
+  Hash.Free;
+end;
+end;
+
+{-------------------------------------------------------------------------------
+    Backward compatibility functions - context functions
+-------------------------------------------------------------------------------}
+
+Function SHA2_Init(HashLength: TSHA2Length): TSHA2Context;
+var
+  Temp: TSHA2Hash;
+begin
+Temp := CreateFromLength(HashLength);
+Temp.Init;
+Result := TSHA2Context(Temp);
 end;
 
 //------------------------------------------------------------------------------
 
 procedure SHA2_Update(Context: TSHA2Context; const Buffer; Size: TMemSize);
-var
-  FullBlocks:     TMemSize;
-  RemainingSize:  TMemSize;
 begin
-with PSHA2Context_Internal(Context)^ do
-  begin
-    If TransferSize > 0 then
-      begin
-        If Size >= (ActiveBlockSize - TransferSize) then
-          begin
-            IncOctaWord(MessageLength,SizeToMessageLength(ActiveBlockSize - TransferSize));
-            Move(Buffer,TransferBuffer[TransferSize],ActiveBlockSize - TransferSize);
-            BufferSHA2(MessageHash,TransferBuffer,ActiveBlockSize);
-            RemainingSize := Size - (ActiveBlockSize - TransferSize);
-            TransferSize := 0;
-          {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
-            SHA2_Update(Context,Pointer(PtrUInt(@Buffer) + (Size - RemainingSize))^,RemainingSize);
-          {$IFDEF FPCDWM}{$POP}{$ENDIF}
-          end
-        else
-          begin
-            IncOctaWord(MessageLength,SizeToMessageLength(Size));
-            Move(Buffer,TransferBuffer[TransferSize],Size);
-            Inc(TransferSize,Size);
-          end;  
-      end
-    else
-      begin
-        IncOctaWord(MessageLength,SizeToMessageLength(Size));
-        FullBlocks := Size div ActiveBlockSize;
-        BufferSHA2(MessageHash,Buffer,FullBlocks * ActiveBlockSize);
-        If (FullBlocks * ActiveBlockSize) < Size then
-          begin
-            TransferSize := Size - (UInt64(FullBlocks) * ActiveBlockSize);
-          {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
-            Move(Pointer(PtrUInt(@Buffer) + (Size - TransferSize))^,TransferBuffer,TransferSize);
-          {$IFDEF FPCDWM}{$POP}{$ENDIF}
-          end;
-      end;
-  end;
+TSHA2Hash(Context).Update(Buffer,Size);
 end;
 
 //------------------------------------------------------------------------------
 
-Function SHA2_Final(var Context: TSHA2Context; const Buffer; Size: TMemSize): TSHA2Hash;
+Function SHA2_Final(var Context: TSHA2Context; const Buffer; Size: TMemSize): TSHA2;
 begin
 SHA2_Update(Context,Buffer,Size);
 Result := SHA2_Final(Context);
 end;
-
+ 
 //------------------------------------------------------------------------------
 
-Function SHA2_Final(var Context: TSHA2Context): TSHA2Hash;
+Function SHA2_Final(var Context: TSHA2Context): TSHA2;
 begin
-with PSHA2Context_Internal(Context)^ do
-  Result := LastBufferSHA2(MessageHash,TransferBuffer,TransferSize,MessageLength);
-FreeMem(Context,SizeOf(TSHA2Context_Internal));
-Context := nil;
+TSHA2Hash(Context).Final;
+Result := TSHA2Hash(Context).SHA2;
+FreeAndNil(TSHA2Hash(Context));
 end;
 
 //------------------------------------------------------------------------------
 
-Function SHA2_Hash(HashSize: TSHA2HashSize; const Buffer; Size: TMemSize): TSHA2Hash;
+Function SHA2_Hash(HashLength: TSHA2Length; const Buffer; Size: TMemSize): TSHA2;
+var
+  Hash: TSHA2Hash;
 begin
-Result.HashSize := HashSize;
-case HashSize of
-  sha224:     Result.Hash224 := InitialSHA2_224;
-  sha256:     Result.Hash256 := InitialSHA2_256;
-  sha384:     Result.Hash384 := InitialSHA2_384;
-  sha512:     Result.Hash512 := InitialSHA2_512;
-  sha512_224: Result.Hash512_224 := InitialSHA2_512_224;
-  sha512_256: Result.Hash512_256 := InitialSHA2_512_256;
-else
-  raise Exception.CreateFmt('SHA2_Hash: Unknown hash size (%d)',[Ord(HashSize)]);
+Hash := CreateFromLength(HashLength);
+try
+  Hash.HashBuffer(Buffer,Size);
+  Result := Hash.SHA2;
+finally
+  Hash.Free;
 end;
-Result := LastBufferSHA2(Result,Buffer,Size,SizeToMessageLength(Size));
 end;
 
 end.
