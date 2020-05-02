@@ -7,25 +7,65 @@
 -------------------------------------------------------------------------------}
 {===============================================================================
 
-  SHA2 Hash Calculation
+  SHA2 calculation
 
-  ©František Milt 2018-10-22
+    SHA2 consists of two groups of hashes. First group is calculated using
+    32 bit long words and contains SHA-224 and SHA-256. The other group is
+    calculated using 64 bit long words and contains all other hashes.
 
-  Version 1.0.6
+    Both groups are completely implemented, therefore following hashes are
+    implemented and supported by this library:
 
-  Following hash sizes are supported in current implementation:
-    SHA-224
-    SHA-256
-    SHA-384
-    SHA-512
-    SHA-512/224
-    SHA-512/256
+        SHA-224
+        SHA-256
+        SHA-384
+        SHA-512
+        SHA-512/224
+        SHA-512/256
+
+    Inheritance tree of hash classes looks like this (star marks an abstract
+    class that must not be directy instantiated):
+
+       *TBlockHash --- *TSHA2Hash --- *TSHA2Hash_32 --- TSHA224Hash
+                                   |                 |- TSHA256Hash
+                                   |
+                                   |- *TSHA2Hash_64 --- TSHA384Hash
+                                                     |- TSHA512Hash
+                                                     |- TSHA512_224Hash
+                                                     |- TSHA512_256Hash
+
+    Given the nature of calculation, 64bit-based hashes performs poorly on
+    32bit systems. On the other hand, they seem to give better performance on
+    64bit systems than 32bit-based hashes.
+
+  Version 1.1 (2020-05-02)
+
+  Last change 2020-05-02
+
+  ©2015-2020 František Milt
+
+  Contacts:
+    František Milt: frantisek.milt@gmail.com
+
+  Support:
+    If you find this code useful, please consider supporting its author(s) by
+    making a small donation using the following link(s):
+
+      https://www.paypal.me/FMilt
+
+  Changelog:
+    For detailed changelog and history please refer to this git repository:
+
+      github.com/TheLazyTomcat/Lib.SHA2
 
   Dependencies:
-    AuxTypes    - github.com/ncs-sniper/Lib.AuxTypes
-    StrRect     - github.com/ncs-sniper/Lib.StrRect
-    BitOps      - github.com/ncs-sniper/Lib.BitOps
-  * SimpleCPUID - github.com/ncs-sniper/Lib.SimpleCPUID
+    AuxTypes           - github.com/TheLazyTomcat/Lib.AuxTypes
+    HashBase           - github.com/TheLazyTomcat/Lib.HashBase
+    AuxClasses         - github.com/TheLazyTomcat/Lib.AuxClasses
+    StrRect            - github.com/TheLazyTomcat/Lib.StrRect
+    StaticMemoryStream - github.com/TheLazyTomcat/Lib.StaticMemoryStream
+    BitOps             - github.com/TheLazyTomcat/Lib.BitOps
+  * SimpleCPUID        - github.com/TheLazyTomcat/Lib.SimpleCPUID
 
   SimpleCPUID might not be needed, see BitOps library for details.
 
@@ -60,7 +100,7 @@ uses
     Auxiliary types, constants and functions
 ===============================================================================}
 type
-  TUInt128 = packed record
+  UInt128 = packed record
     case Integer of
       0:(Lo,Hi:   UInt64);
       1:(Bytes:   array[0..15] of UInt8);
@@ -68,34 +108,33 @@ type
       3:(DWords:  array[0..3] of UInt32);
       4:(QWords:  array[0..1] of UInt64);
   end;
-  PUInt128 = ^TUInt128;
-  UInt128 = TUInt128;
+  PUInt128 = ^UInt128;
 
-  TOctaWord = TUInt128;
-  POctaWord = ^TOctaWord;
-  OctaWord = TOctaWord;
+  OctaWord = UInt128;
+  POctaWord = ^OctaWord;
 
   OWord = OctaWord;
   POWord = ^OWord;
 
 const
-  ZeroUInt128: TUInt128 = (Lo: 0; Hi: 0);
+  ZeroUInt128: UInt128 = (Lo: 0; Hi: 0);
 
-Function BuildOctaWord(Lo,Hi: UInt64): TUInt128; overload;
-Function BuildOctaWord(Lo: UInt64): TUInt128; overload;{$IFDEF CanInline} inline; {$ENDIF}
+Function BuildOctaWord(Lo,Hi: UInt64): UInt128; overload;
+Function BuildOctaWord(Lo: UInt64): UInt128; overload;{$IFDEF CanInline} inline; {$ENDIF}
 
-procedure IncrementOctaWord(var Value: TUInt128; Increment: TUInt128);
+procedure IncrementOctaWord(var Value: UInt128; Increment: UInt128);
 
-Function SizeToMessageLength(Size: UInt64): TUInt128;
+Function SizeToMessageLength(Size: UInt64): UInt128;
+Function MessageLengthToSize(MessageLength: UInt128): UInt64;
 
-Function EndianSwap(Value: TUInt128): TUInt128; overload;
-procedure EndianSwapValue(var Value: TUInt128); overload;{$IFDEF CanInline} inline; {$ENDIF}
+Function EndianSwap(Value: UInt128): UInt128; overload;
+procedure EndianSwapValue(var Value: UInt128); overload;{$IFDEF CanInline} inline; {$ENDIF}
 
 {===============================================================================
     Common types and constants
 ===============================================================================}
 {
-  Bytes in types TSHA224 trough TSHA512_256 are always ordered from most
+  Bytes in types TSHA224 trough TSHA512_256 are always ordered from the most
   significant byte to least significant byte (big endian).
   
   Types TSHA*Sys has no such guarantee and their internal structure depends on
@@ -232,7 +271,7 @@ const
   ZeroSHA512_256: TSHA512_256 = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
 
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 type
   ESHA2Exception = class(EHashException);
@@ -270,7 +309,7 @@ type
   {
     Since HashSize returns technical size of the hash, which is not always the
     same as is indicated by its name, observed size was introduced. It returns
-    number of bytes that are observed in the hash (they are considered when
+    number of bytes that are observed in the hash (they are accessed when
     comparing and converting to/from string).
   }
     class Function HashObservedSize: TMemSize; virtual; abstract;
@@ -279,11 +318,16 @@ type
     Function AsString: String; override;
     procedure FromString(const Str: String); override;
   {
-    Note that the hash is streamed in its entirety, not only ebserved bytes.
-    How many bytes will be written/read is equal to HashSize.
+    Note that, by default, the hash is streamed in its entirety, not only
+    observed bytes. How many bytes will be written/read is equal to HashSize.
+
+    If you want to only stream observed bytes, use methods SaveObservedToStream
+    and LoadObservedFromStream.
   }
     procedure SaveToStream(Stream: TStream; Endianness: THashEndianness = heDefault); override;
     procedure LoadFromStream(Stream: TStream; Endianness: THashEndianness = heDefault); override;
+    procedure SaveObservedToStream(Stream: TStream); virtual;
+    procedure LoadObservedFromStream(Stream: TStream); virtual;
     property SHA2: TSHA2 read GetSHA2;
   end;
 
@@ -551,6 +595,7 @@ Function CreateByLength(HashLength: TSHA2Length): TSHA2Hash;
 
 Function CreateFromByLength(HashLength: TSHA2Length; Hash: TSHA2Hash): TSHA2Hash; overload;
 Function CreateFromByLength(HashLength: TSHA2Length; Hash: TSHA2): TSHA2Hash; overload;
+Function CreateFromByLength(SHA2: TSHA2): TSHA2Hash; overload;{$IFDEF CanInline} inline; {$ENDIF}
 
 {===============================================================================
     Backward compatibility functions
@@ -573,7 +618,9 @@ Function SHA2ToStr(SHA512_224: TSHA512_224): String; overload;
 Function SHA2ToStr(SHA512_256: TSHA512_256): String; overload;
 Function SHA2ToStr(SHA2: TSHA2): String; overload;
 
-// Delphi cannot overload based on result type, welp...
+{
+  Delphi cannot overload based on result type, welp...
+}
 Function StrToSHA2_224(Str: String): TSHA224;
 Function StrToSHA2_256(Str: String): TSHA256;
 Function StrToSHA2_384(Str: String): TSHA384;
@@ -623,44 +670,48 @@ Function BinaryCorrectSHA2(SHA512_256: TSHA512_256): TSHA512_256; overload;{$IFD
 Function BinaryCorrectSHA2(SHA2: TSHA2): TSHA2; overload;{$IFDEF CanInline} inline; {$ENDIF}
 
 //------------------------------------------------------------------------------
-(*
-procedure BufferSHA2(var Hash: TSHA2Hash_224; const Buffer; Size: TMemSize); overload;
-procedure BufferSHA2(var Hash: TSHA2Hash_256; const Buffer; Size: TMemSize); overload;
-procedure BufferSHA2(var Hash: TSHA2Hash_384; const Buffer; Size: TMemSize); overload;
-procedure BufferSHA2(var Hash: TSHA2Hash_512; const Buffer; Size: TMemSize); overload;
-procedure BufferSHA2(var Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize); overload;
-procedure BufferSHA2(var Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize); overload;
-procedure BufferSHA2(var Hash: TSHA2Hash; const Buffer; Size: TMemSize); overload;
 
-Function LastBufferSHA2(Hash: TSHA2Hash_224; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2Hash_224; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_256; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2Hash_256; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_384; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_512; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_512_224; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash_512_256; overload;
+procedure BufferSHA2(var SHA224: TSHA224; const Buffer; Size: TMemSize); overload;
+procedure BufferSHA2(var SHA256: TSHA256; const Buffer; Size: TMemSize); overload;
+procedure BufferSHA2(var SHA384: TSHA384; const Buffer; Size: TMemSize); overload;
+procedure BufferSHA2(var SHA512: TSHA512; const Buffer; Size: TMemSize); overload;
+procedure BufferSHA2(var SHA512_224: TSHA512_224; const Buffer; Size: TMemSize); overload;
+procedure BufferSHA2(var SHA512_256: TSHA512_256; const Buffer; Size: TMemSize); overload;
+procedure BufferSHA2(var SHA2: TSHA2; const Buffer; Size: TMemSize); overload;
 
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_384; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_512; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_512_224; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA2Hash_512_256; overload;
+Function LastBufferSHA2(SHA224: TSHA224; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA224; overload;
+Function LastBufferSHA2(SHA256: TSHA256; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA256; overload;
+Function LastBufferSHA2(SHA384: TSHA384; const Buffer; Size: TMemSize; MessageLength: UInt128): TSHA384; overload;
+Function LastBufferSHA2(SHA512: TSHA512; const Buffer; Size: TMemSize; MessageLength: UInt128): TSHA512; overload;
+Function LastBufferSHA2(SHA512_224: TSHA512_224; const Buffer; Size: TMemSize; MessageLength: UInt128): TSHA512_224; overload;
+Function LastBufferSHA2(SHA512_256: TSHA512_256; const Buffer; Size: TMemSize; MessageLength: UInt128): TSHA512_256; overload;
 
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_384; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_512; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_512_224; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash_512_256; overload;
+{
+  Inlining note - FPC at this point (05-2020) does not support untyped (formal)
+  parameter in inlined functions.
+}
+Function LastBufferSHA2(SHA384: TSHA384; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA384; overload;{$IF defined(CanInline) and not defined(FPC)} inline; {$IFEND}
+Function LastBufferSHA2(SHA512: TSHA512; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA512; overload;{$IF defined(CanInline) and not defined(FPC)} inline; {$IFEND}
+Function LastBufferSHA2(SHA512_224: TSHA512_224; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA512_224; overload;{$IF defined(CanInline) and not defined(FPC)} inline; {$IFEND}
+Function LastBufferSHA2(SHA512_256: TSHA512_256; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA512_256; overload;{$IF defined(CanInline) and not defined(FPC)} inline; {$IFEND}
 
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2Hash; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2Hash; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2Hash; overload;
+Function LastBufferSHA2(SHA384: TSHA384; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA384; overload;{$IF defined(CanInline) and not defined(FPC)} inline; {$IFEND}
+Function LastBufferSHA2(SHA512: TSHA512; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA512; overload;{$IF defined(CanInline) and not defined(FPC)} inline; {$IFEND}
+Function LastBufferSHA2(SHA512_224: TSHA512_224; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA512_224; overload;{$IF defined(CanInline) and not defined(FPC)} inline; {$IFEND}
+Function LastBufferSHA2(SHA512_256: TSHA512_256; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA512_256; overload;{$IF defined(CanInline) and not defined(FPC)} inline; {$IFEND}
 
-Function LastBufferSHA2(Hash: TSHA2Hash_224; const Buffer; Size: TMemSize): TSHA2Hash_224; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_256; const Buffer; Size: TMemSize): TSHA2Hash_256; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_384; const Buffer; Size: TMemSize): TSHA2Hash_384; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512; const Buffer; Size: TMemSize): TSHA2Hash_512; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_224; const Buffer; Size: TMemSize): TSHA2Hash_512_224; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash_512_256; const Buffer; Size: TMemSize): TSHA2Hash_512_256; overload;
-Function LastBufferSHA2(Hash: TSHA2Hash; const Buffer; Size: TMemSize): TSHA2Hash; overload;
-*)
+Function LastBufferSHA2(SHA2: TSHA2; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2; overload;
+Function LastBufferSHA2(SHA2: TSHA2; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2; overload;
+Function LastBufferSHA2(SHA2: TSHA2; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2; overload;
+
+Function LastBufferSHA2(SHA224: TSHA224; const Buffer; Size: TMemSize): TSHA224; overload;{$IF defined(CanInline) and not defined(FPC)} inline; {$IFEND}
+Function LastBufferSHA2(SHA256: TSHA256; const Buffer; Size: TMemSize): TSHA256; overload;{$IF defined(CanInline) and not defined(FPC)} inline; {$IFEND}
+Function LastBufferSHA2(SHA384: TSHA384; const Buffer; Size: TMemSize): TSHA384; overload;{$IF defined(CanInline) and not defined(FPC)} inline; {$IFEND}
+Function LastBufferSHA2(SHA512: TSHA512; const Buffer; Size: TMemSize): TSHA512; overload;{$IF defined(CanInline) and not defined(FPC)} inline; {$IFEND}
+Function LastBufferSHA2(SHA512_224: TSHA512_224; const Buffer; Size: TMemSize): TSHA512_224; overload;{$IF defined(CanInline) and not defined(FPC)} inline; {$IFEND}
+Function LastBufferSHA2(SHA512_256: TSHA512_256; const Buffer; Size: TMemSize): TSHA512_256; overload;{$IF defined(CanInline) and not defined(FPC)} inline; {$IFEND}
+Function LastBufferSHA2(SHA2: TSHA2; const Buffer; Size: TMemSize): TSHA2; overload;
+
 //------------------------------------------------------------------------------
 
 Function BufferSHA2(HashLength: TSHA2Length; const Buffer; Size: TMemSize): TSHA2; overload;
@@ -689,6 +740,13 @@ uses
   SysUtils,
   BitOps, StrRect;
 
+{$IFDEF FPC_DisableWarns}
+  {$DEFINE FPCDWM}
+  {$DEFINE W4055:={$WARN 4055 OFF}} // Conversion between ordinals and pointers is not portable
+  {$DEFINE W4056:={$WARN 4056 OFF}} // Conversion between ordinals and pointers is not portable
+  {$DEFINE W5057:={$WARN 5057 OFF}} // Local variable "$1" does not seem to be initialized
+{$ENDIF}
+
 {===============================================================================
     Auxiliary functions - implementation
 ===============================================================================}
@@ -696,7 +754,7 @@ uses
     Auxiliary functions - public functions
 -------------------------------------------------------------------------------}
 
-Function BuildOctaWord(Lo,Hi: UInt64): TUInt128;
+Function BuildOctaWord(Lo,Hi: UInt64): UInt128;
 begin
 Result.Lo := Lo;
 Result.Hi := Hi;
@@ -704,14 +762,14 @@ end;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-Function BuildOctaWord(Lo: UInt64): TUInt128;
+Function BuildOctaWord(Lo: UInt64): UInt128;
 begin
 Result := BuildOctaWord(Lo,0);
 end;
 
 //------------------------------------------------------------------------------
 
-procedure IncrementOctaWord(var Value: TUInt128; Increment: TUInt128);
+procedure IncrementOctaWord(var Value: UInt128; Increment: UInt128);
 var
   Result: UInt64;
   Carry:  UInt32;
@@ -728,7 +786,7 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function SizeToMessageLength(Size: UInt64): TUInt128;
+Function SizeToMessageLength(Size: UInt64): UInt128;
 begin
 Result.Hi := UInt64(Size shr 61);
 Result.Lo := UInt64(Size shl 3);
@@ -736,7 +794,15 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function EndianSwap(Value: TUInt128): TUInt128;
+Function MessageLengthToSize(MessageLength: UInt128): UInt64;
+begin
+Result := UInt64(MessageLength.Lo shr 3) or
+          UInt64(MessageLength.Hi shl 61);
+end;
+
+//------------------------------------------------------------------------------
+
+Function EndianSwap(Value: UInt128): UInt128;
 begin
 Result.Hi := EndianSwap(Value.Lo);
 Result.Lo := EndianSwap(Value.Hi);
@@ -744,7 +810,7 @@ end;
 
 //------------------------------------------------------------------------------
 
-procedure EndianSwapValue(var Value: TUInt128);
+procedure EndianSwapValue(var Value: UInt128);
 begin
 Value := EndianSwap(Value);
 end;
@@ -812,6 +878,13 @@ case HashLength of
 else
   raise ESHA2InvalidLength.CreateFmt('CreateFromByLength(TSHA2): Invalid hash length (%d)',[Ord(HashLength)]);
 end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function CreateFromByLength(SHA2: TSHA2): TSHA2Hash;
+begin
+Result := CreateFromByLength(SHA2.HashLength,SHA2);
 end;
 
 {-------------------------------------------------------------------------------
@@ -969,7 +1042,7 @@ else If Length(Str) > Integer(HashObservedSize * 2) then
   TempStr := Copy(Str,Length(Str) - Pred(Integer(HashObservedSize * 2)),Integer(HashObservedSize * 2))
 else
   TempStr := Str;
-FillChar(HashBuffer,SizeOf(TSHA2HashBuffer),0);
+FillChar(Addr(HashBuffer)^,SizeOf(TSHA2HashBuffer),0);
 For i := 0 to Pred(HashObservedSize) do
   HashBuffer[i] := UInt8(StrToInt('$' + Copy(TempStr,(i * 2) + 1,2)));
 SetHashBuffer(HashBuffer);
@@ -994,6 +1067,7 @@ end;
 
 //------------------------------------------------------------------------------
 
+{$IFDEF FPCDWM}{$PUSH}W5057{$ENDIF}
 procedure TSHA2Hash.LoadFromStream(Stream: TStream; Endianness: THashEndianness = heDefault);
 var
   Temp: TSHA2HashBuffer;
@@ -1008,6 +1082,29 @@ else
   SetHashBuffer(Temp);
 end;
 end;
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
+
+//------------------------------------------------------------------------------
+
+procedure TSHA2Hash.SaveObservedToStream(Stream: TStream);
+var
+  Temp: TSHA2HashBuffer;
+begin
+Temp := GetHashBuffer;
+Stream.WriteBuffer(Temp,HashObservedSize);
+end;
+
+//------------------------------------------------------------------------------
+
+{$IFDEF FPCDWM}{$PUSH}W5057{$ENDIF}
+procedure TSHA2Hash.LoadObservedFromStream(Stream: TStream);
+var
+  Temp: TSHA2HashBuffer;
+begin
+Stream.ReadBuffer(Temp,HashObservedSize);
+SetHashBuffer(Temp);
+end;
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
 
 
 {-------------------------------------------------------------------------------
@@ -1263,12 +1360,13 @@ var
   Temp: TSHA224;
 begin
 Temp := SHA224FromSys(TSHA224Sys(fSHA2));
-FillChar(Result,SizeOf(TSHA2HashBuffer),0);
+FillChar(Addr(Result)^,SizeOf(TSHA2HashBuffer),0);
 Move(Temp,Result,HashSize);
 end;
 
 //------------------------------------------------------------------------------
 
+{$IFDEF FPCDWM}{$PUSH}W5057{$ENDIF}
 procedure TSHA224Hash.SetHashBuffer(HashBuffer: TSHA2HashBuffer);
 var
   Temp: TSHA224;
@@ -1276,6 +1374,7 @@ begin
 Move(HashBuffer,Temp,HashSize);
 fSHA2 := TSHA2Sys_32(SHA224ToSys(Temp));
 end;
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
 
 //------------------------------------------------------------------------------
 
@@ -1446,12 +1545,13 @@ var
   Temp: TSHA256;
 begin
 Temp := SHA256FromSys(TSHA256Sys(fSHA2));
-FillChar(Result,SizeOf(TSHA2HashBuffer),0);
+FillChar(Addr(Result)^,SizeOf(TSHA2HashBuffer),0);
 Move(Temp,Result,HashSize);
 end;
 
 //------------------------------------------------------------------------------
 
+{$IFDEF FPCDWM}{$PUSH}W5057{$ENDIF}
 procedure TSHA256Hash.SetHashBuffer(HashBuffer: TSHA2HashBuffer);
 var
   Temp: TSHA256;
@@ -1459,6 +1559,7 @@ begin
 Move(HashBuffer,Temp,HashSize);
 fSHA2 := TSHA2Sys_32(SHA256ToSys(Temp));
 end;
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
 
 //------------------------------------------------------------------------------
 
@@ -1629,12 +1730,13 @@ var
   Temp: TSHA384;
 begin
 Temp := SHA384FromSys(TSHA384Sys(fSHA2));
-FillChar(Result,SizeOf(TSHA2HashBuffer),0);
+FillChar(Addr(Result)^,SizeOf(TSHA2HashBuffer),0);
 Move(Temp,Result,HashSize);
 end;
 
 //------------------------------------------------------------------------------
 
+{$IFDEF FPCDWM}{$PUSH}W5057{$ENDIF}
 procedure TSHA384Hash.SetHashBuffer(HashBuffer: TSHA2HashBuffer);
 var
   Temp: TSHA384;
@@ -1642,6 +1744,7 @@ begin
 Move(HashBuffer,Temp,HashSize);
 fSHA2 := TSHA2Sys_64(SHA384ToSys(Temp));
 end;
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
 
 //------------------------------------------------------------------------------
 
@@ -1812,12 +1915,13 @@ var
   Temp: TSHA512;
 begin
 Temp := SHA512FromSys(TSHA512Sys(fSHA2));
-FillChar(Result,SizeOf(TSHA2HashBuffer),0);
+FillChar(Addr(Result)^,SizeOf(TSHA2HashBuffer),0);
 Move(Temp,Result,HashSize);
 end;
 
 //------------------------------------------------------------------------------
 
+{$IFDEF FPCDWM}{$PUSH}W5057{$ENDIF}
 procedure TSHA512Hash.SetHashBuffer(HashBuffer: TSHA2HashBuffer);
 var
   Temp: TSHA512;
@@ -1825,6 +1929,7 @@ begin
 Move(HashBuffer,Temp,HashSize);
 fSHA2 := TSHA2Sys_64(SHA512ToSys(Temp));
 end;
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
 
 //------------------------------------------------------------------------------
 
@@ -1995,12 +2100,13 @@ var
   Temp: TSHA512_224;
 begin
 Temp := SHA512_224FromSys(TSHA512_224Sys(fSHA2));
-FillChar(Result,SizeOf(TSHA2HashBuffer),0);
+FillChar(Addr(Result)^,SizeOf(TSHA2HashBuffer),0);
 Move(Temp,Result,HashSize);
 end;
 
 //------------------------------------------------------------------------------
 
+{$IFDEF FPCDWM}{$PUSH}W5057{$ENDIF}
 procedure TSHA512_224Hash.SetHashBuffer(HashBuffer: TSHA2HashBuffer);
 var
   Temp: TSHA512_224;
@@ -2008,6 +2114,7 @@ begin
 Move(HashBuffer,Temp,HashSize);
 fSHA2 := TSHA2Sys_64(SHA512_224ToSys(Temp));
 end;
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
 
 //------------------------------------------------------------------------------
 
@@ -2178,12 +2285,13 @@ var
   Temp: TSHA512_256;
 begin
 Temp := SHA512_256FromSys(TSHA512_256Sys(fSHA2));
-FillChar(Result,SizeOf(TSHA2HashBuffer),0);
+FillChar(Addr(Result)^,SizeOf(TSHA2HashBuffer),0);
 Move(Temp,Result,HashSize);
 end;
 
 //------------------------------------------------------------------------------
 
+{$IFDEF FPCDWM}{$PUSH}W5057{$ENDIF}
 procedure TSHA512_256Hash.SetHashBuffer(HashBuffer: TSHA2HashBuffer);
 var
   Temp: TSHA512_256;
@@ -2191,6 +2299,7 @@ begin
 Move(HashBuffer,Temp,HashSize);
 fSHA2 := TSHA2Sys_64(SHA512_256ToSys(Temp));
 end;
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
 
 //------------------------------------------------------------------------------
 
@@ -3150,7 +3259,413 @@ end;
     Backward compatibility functions - low-level processing functions
 -------------------------------------------------------------------------------}
 
-{$message 'here'}
+procedure BufferSHA2(var SHA224: TSHA224; const Buffer; Size: TMemSize);
+var
+  Hash: TSHA224Hash;
+begin
+Hash := TSHA224Hash.CreateAndInitFrom(SHA224);
+try
+  If Size > 0 then
+    begin
+      If (Size mod Hash.BlockSize) = 0 then
+        begin
+          Hash.Update(Buffer,Size);
+          SHA224 := Hash.SHA224;
+        end
+      else raise ESHA2ProcessingError.CreateFmt('BufferSHA2: Buffer size (%d) is not divisible by %d.',[Size,Hash.BlockSize]);
+    end;
+finally
+  Hash.Free;
+end;
+end;
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+procedure BufferSHA2(var SHA256: TSHA256; const Buffer; Size: TMemSize);
+var
+  Hash: TSHA256Hash;
+begin
+Hash := TSHA256Hash.CreateAndInitFrom(SHA256);
+try
+  If Size > 0 then
+    begin
+      If (Size mod Hash.BlockSize) = 0 then
+        begin
+          Hash.Update(Buffer,Size);
+          SHA256 := Hash.SHA256;
+        end
+      else raise ESHA2ProcessingError.CreateFmt('BufferSHA2: Buffer size (%d) is not divisible by %d.',[Size,Hash.BlockSize]);
+    end;
+finally
+  Hash.Free;
+end;
+end;
+   
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+procedure BufferSHA2(var SHA384: TSHA384; const Buffer; Size: TMemSize);
+var
+  Hash: TSHA384Hash;
+begin
+Hash := TSHA384Hash.CreateAndInitFrom(SHA384);
+try
+  If Size > 0 then
+    begin
+      If (Size mod Hash.BlockSize) = 0 then
+        begin
+          Hash.Update(Buffer,Size);
+          SHA384 := Hash.SHA384;
+        end
+      else raise ESHA2ProcessingError.CreateFmt('BufferSHA2: Buffer size (%d) is not divisible by %d.',[Size,Hash.BlockSize]);
+    end;
+finally
+  Hash.Free;
+end;
+end;
+  
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+procedure BufferSHA2(var SHA512: TSHA512; const Buffer; Size: TMemSize);
+var
+  Hash: TSHA512Hash;
+begin
+Hash := TSHA512Hash.CreateAndInitFrom(SHA512);
+try
+  If Size > 0 then
+    begin
+      If (Size mod Hash.BlockSize) = 0 then
+        begin
+          Hash.Update(Buffer,Size);
+          SHA512 := Hash.SHA512;
+        end
+      else raise ESHA2ProcessingError.CreateFmt('BufferSHA2: Buffer size (%d) is not divisible by %d.',[Size,Hash.BlockSize]);
+    end;
+finally
+  Hash.Free;
+end;
+end;
+   
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+procedure BufferSHA2(var SHA512_224: TSHA512_224; const Buffer; Size: TMemSize);
+var
+  Hash: TSHA512_224Hash;
+begin
+Hash := TSHA512_224Hash.CreateAndInitFrom(SHA512_224);
+try
+  If Size > 0 then
+    begin
+      If (Size mod Hash.BlockSize) = 0 then
+        begin
+          Hash.Update(Buffer,Size);
+          SHA512_224 := Hash.SHA512_224;
+        end
+      else raise ESHA2ProcessingError.CreateFmt('BufferSHA2: Buffer size (%d) is not divisible by %d.',[Size,Hash.BlockSize]);
+    end;
+finally
+  Hash.Free;
+end;
+end;
+    
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+procedure BufferSHA2(var SHA512_256: TSHA512_256; const Buffer; Size: TMemSize);
+var
+  Hash: TSHA512_256Hash;
+begin
+Hash := TSHA512_256Hash.CreateAndInitFrom(SHA512_256);
+try
+  If Size > 0 then
+    begin
+      If (Size mod Hash.BlockSize) = 0 then
+        begin
+          Hash.Update(Buffer,Size);
+          SHA512_256 := Hash.SHA512_256;
+        end
+      else raise ESHA2ProcessingError.CreateFmt('BufferSHA2: Buffer size (%d) is not divisible by %d.',[Size,Hash.BlockSize]);
+    end;
+finally
+  Hash.Free;
+end;
+end;
+   
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+procedure BufferSHA2(var SHA2: TSHA2; const Buffer; Size: TMemSize);
+begin
+case SHA2.HashLength of
+  shal224:      BufferSHA2(SHA2.SHA224,Buffer,Size);
+  shal256:      BufferSHA2(SHA2.SHA256,Buffer,Size);
+  shal384:      BufferSHA2(SHA2.SHA384,Buffer,Size);
+  shal512:      BufferSHA2(SHA2.SHA512,Buffer,Size);
+  shal512_224:  BufferSHA2(SHA2.SHA512_224,Buffer,Size);
+  shal512_256:  BufferSHA2(SHA2.SHA512_256,Buffer,Size);
+else
+  raise ESHA2InvalidLength.CreateFmt('BufferSHA2: Invalid hash length (%d)',[Ord(SHA2.HashLength)]);
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function LastBufferSHA2(SHA224: TSHA224; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA224;
+var
+  Hash: TSHA224Hash;
+begin
+Hash := TSHA224Hash.CreateAndInitFrom(SHA224);
+try
+  Hash.ProcessedBytes := (MessageLength shr 3) - Size;
+  Hash.Final(Buffer,Size);
+  Result := Hash.SHA224;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA256: TSHA256; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA256;
+var
+  Hash: TSHA256Hash;
+begin
+Hash := TSHA256Hash.CreateAndInitFrom(SHA256);
+try
+  Hash.ProcessedBytes := (MessageLength shr 3) - Size;
+  Hash.Final(Buffer,Size);
+  Result := Hash.SHA256;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA384: TSHA384; const Buffer; Size: TMemSize; MessageLength: UInt128): TSHA384;
+var
+  Hash: TSHA384Hash;
+begin
+Hash := TSHA384Hash.CreateAndInitFrom(SHA384);
+try
+  Hash.ProcessedBytes := MessageLengthToSize(MessageLength) - Size;
+  Hash.Final(Buffer,Size);
+  Result := Hash.SHA384;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA512: TSHA512; const Buffer; Size: TMemSize; MessageLength: UInt128): TSHA512;
+var
+  Hash: TSHA512Hash;
+begin
+Hash := TSHA512Hash.CreateAndInitFrom(SHA512);
+try
+  Hash.ProcessedBytes := MessageLengthToSize(MessageLength) - Size;
+  Hash.Final(Buffer,Size);
+  Result := Hash.SHA512;
+finally
+  Hash.Free;
+end;
+end;
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA512_224: TSHA512_224; const Buffer; Size: TMemSize; MessageLength: UInt128): TSHA512_224;
+var
+  Hash: TSHA512_224Hash;
+begin
+Hash := TSHA512_224Hash.CreateAndInitFrom(SHA512_224);
+try
+  Hash.ProcessedBytes := MessageLengthToSize(MessageLength) - Size;
+  Hash.Final(Buffer,Size);
+  Result := Hash.SHA512_224;
+finally
+  Hash.Free;
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA512_256: TSHA512_256; const Buffer; Size: TMemSize; MessageLength: UInt128): TSHA512_256;
+var
+  Hash: TSHA512_256Hash;
+begin
+Hash := TSHA512_256Hash.CreateAndInitFrom(SHA512_256);
+try
+  Hash.ProcessedBytes := MessageLengthToSize(MessageLength) - Size;
+  Hash.Final(Buffer,Size);
+  Result := Hash.SHA512_256;
+finally
+  Hash.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function LastBufferSHA2(SHA384: TSHA384; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA384;
+begin
+Result := LastBufferSHA2(SHA384,Buffer,Size,BuildOctaWord(MessageLengthLo));
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA512: TSHA512; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA512;
+begin
+Result := LastBufferSHA2(SHA512,Buffer,Size,BuildOctaWord(MessageLengthLo));
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA512_224: TSHA512_224; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA512_224;
+begin
+Result := LastBufferSHA2(SHA512_224,Buffer,Size,BuildOctaWord(MessageLengthLo));
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA512_256: TSHA512_256; const Buffer; Size: TMemSize; MessageLengthLo: UInt64): TSHA512_256;
+begin
+Result := LastBufferSHA2(SHA512_256,Buffer,Size,BuildOctaWord(MessageLengthLo));
+end;
+
+//------------------------------------------------------------------------------
+
+Function LastBufferSHA2(SHA384: TSHA384; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA384;
+begin
+Result := LastBufferSHA2(SHA384,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA512: TSHA512; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA512;
+begin
+Result := LastBufferSHA2(SHA512,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA512_224: TSHA512_224; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA512_224;
+begin
+Result := LastBufferSHA2(SHA512_224,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA512_256: TSHA512_256; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA512_256;
+begin
+Result := LastBufferSHA2(SHA512_256,Buffer,Size,BuildOctaWord(MessageLengthLo,MessageLengthHi));
+end;
+
+//------------------------------------------------------------------------------
+
+Function LastBufferSHA2(SHA2: TSHA2; const Buffer; Size: TMemSize; MessageLength: UInt64): TSHA2; overload;
+begin
+Result.HashLength := SHA2.HashLength;
+case SHA2.HashLength of
+  shal224:      Result.SHA224 := LastBufferSHA2(SHA2.SHA224,Buffer,Size,MessageLength);
+  shal256:      Result.SHA256 := LastBufferSHA2(SHA2.SHA256,Buffer,Size,MessageLength);
+  shal384:      Result.SHA384 := LastBufferSHA2(SHA2.SHA384,Buffer,Size,MessageLength);
+  shal512:      Result.SHA512 := LastBufferSHA2(SHA2.SHA512,Buffer,Size,MessageLength);
+  shal512_224:  Result.SHA512_224 := LastBufferSHA2(SHA2.SHA512_224,Buffer,Size,MessageLength);
+  shal512_256:  Result.SHA512_256 := LastBufferSHA2(SHA2.SHA512_256,Buffer,Size,MessageLength);
+else
+  raise ESHA2InvalidLength.CreateFmt('LastBufferSHA2: Invalid hash length (%d)',[Ord(SHA2.HashLength)]);
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA2: TSHA2; const Buffer; Size: TMemSize; MessageLengthLo, MessageLengthHi: UInt64): TSHA2; overload;
+begin
+Result.HashLength := SHA2.HashLength;
+case SHA2.HashLength of
+  shal224:      Result.SHA224 := LastBufferSHA2(SHA2.SHA224,Buffer,Size,MessageLengthLo);
+  shal256:      Result.SHA256 := LastBufferSHA2(SHA2.SHA256,Buffer,Size,MessageLengthLo);
+  shal384:      Result.SHA384 := LastBufferSHA2(SHA2.SHA384,Buffer,Size,MessageLengthLo,MessageLengthHi);
+  shal512:      Result.SHA512 := LastBufferSHA2(SHA2.SHA512,Buffer,Size,MessageLengthLo,MessageLengthHi);
+  shal512_224:  Result.SHA512_224 := LastBufferSHA2(SHA2.SHA512_224,Buffer,Size,MessageLengthLo,MessageLengthHi);
+  shal512_256:  Result.SHA512_256 := LastBufferSHA2(SHA2.SHA512_256,Buffer,Size,MessageLengthLo,MessageLengthHi);
+else
+  raise ESHA2InvalidLength.CreateFmt('LastBufferSHA2: Invalid hash length (%d)',[Ord(SHA2.HashLength)]);
+end;
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA2: TSHA2; const Buffer; Size: TMemSize; MessageLength: OctaWord): TSHA2; overload;
+begin
+Result.HashLength := SHA2.HashLength;
+case SHA2.HashLength of
+  shal224:      Result.SHA224 := LastBufferSHA2(SHA2.SHA224,Buffer,Size,MessageLength.Lo);
+  shal256:      Result.SHA256 := LastBufferSHA2(SHA2.SHA256,Buffer,Size,MessageLength.Lo);
+  shal384:      Result.SHA384 := LastBufferSHA2(SHA2.SHA384,Buffer,Size,MessageLength);
+  shal512:      Result.SHA512 := LastBufferSHA2(SHA2.SHA512,Buffer,Size,MessageLength);
+  shal512_224:  Result.SHA512_224 := LastBufferSHA2(SHA2.SHA512_224,Buffer,Size,MessageLength);
+  shal512_256:  Result.SHA512_256 := LastBufferSHA2(SHA2.SHA512_256,Buffer,Size,MessageLength);
+else
+  raise ESHA2InvalidLength.CreateFmt('LastBufferSHA2: Invalid hash length (%d)',[Ord(SHA2.HashLength)]);
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function LastBufferSHA2(SHA224: TSHA224; const Buffer; Size: TMemSize): TSHA224;
+begin
+Result := LastBufferSHA2(SHA224,Buffer,Size,UInt64(Size) shl 3);
+end;
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA256: TSHA256; const Buffer; Size: TMemSize): TSHA256;
+begin
+Result := LastBufferSHA2(SHA256,Buffer,Size,UInt64(Size) shl 3);
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA384: TSHA384; const Buffer; Size: TMemSize): TSHA384;
+begin
+Result := LastBufferSHA2(SHA384,Buffer,Size,SizeToMessageLength(Size));
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA512: TSHA512; const Buffer; Size: TMemSize): TSHA512;
+begin
+Result := LastBufferSHA2(SHA512,Buffer,Size,SizeToMessageLength(Size));
+end;
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA512_224: TSHA512_224; const Buffer; Size: TMemSize): TSHA512_224;
+begin
+Result := LastBufferSHA2(SHA512_224,Buffer,Size,SizeToMessageLength(Size));
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA512_256: TSHA512_256; const Buffer; Size: TMemSize): TSHA512_256;
+begin
+Result := LastBufferSHA2(SHA512_256,Buffer,Size,SizeToMessageLength(Size));
+end;
+ 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Function LastBufferSHA2(SHA2: TSHA2; const Buffer; Size: TMemSize): TSHA2;
+begin
+Result.HashLength := SHA2.HashLength;
+case SHA2.HashLength of
+  shal224:      Result.SHA224 := LastBufferSHA2(SHA2.SHA224,Buffer,Size);
+  shal256:      Result.SHA256 := LastBufferSHA2(SHA2.SHA256,Buffer,Size);
+  shal384:      Result.SHA384 := LastBufferSHA2(SHA2.SHA384,Buffer,Size);
+  shal512:      Result.SHA512 := LastBufferSHA2(SHA2.SHA512,Buffer,Size);
+  shal512_224:  Result.SHA512_224 := LastBufferSHA2(SHA2.SHA512_224,Buffer,Size);
+  shal512_256:  Result.SHA512_256 := LastBufferSHA2(SHA2.SHA512_256,Buffer,Size);
+else
+  raise ESHA2InvalidLength.CreateFmt('LastBufferSHA2: Invalid hash length (%d)',[Ord(SHA2.HashLength)]);
+end;
+end;
 
 {-------------------------------------------------------------------------------
     Backward compatibility functions - processing functions
