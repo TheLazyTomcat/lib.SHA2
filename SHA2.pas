@@ -7,9 +7,9 @@
 -------------------------------------------------------------------------------}
 {===============================================================================
 
-  SHA2 calculation
+  SHA-2 calculation
 
-    SHA2 consists of two groups of hashes. First group is calculated using
+    SHA-2 consists of two groups of hashes. First group is calculated using
     32 bit long words and contains SHA-224 and SHA-256. The other group is
     calculated using 64 bit long words and contains all other hashes.
 
@@ -40,7 +40,7 @@
 
   Version 1.1 (2020-05-02)
 
-  Last change 2020-05-02
+  Last change 2020-05-03
 
   ©2015-2020 František Milt
 
@@ -140,7 +140,7 @@ procedure EndianSwapValue(var Value: UInt128); overload;{$IFDEF CanInline} inlin
   Types TSHA*Sys has no such guarantee and their internal structure depends on
   current implementation.
 
-  SHA2 does not differ in little and big endian form, as it is not a single
+  SHA-2 does not differ in little and big endian form, as it is not a single
   quantity, therefore methods like SHA*ToLE or SHA*ToBE do nothing and are
   present only for the sake of completeness.
 }
@@ -323,6 +323,8 @@ type
 
     If you want to only stream observed bytes, use methods SaveObservedToStream
     and LoadObservedFromStream.
+    Note that since setting endianness does not change the streamed data, it
+    is omitted from observed streaming. 
   }
     procedure SaveToStream(Stream: TStream; Endianness: THashEndianness = heDefault); override;
     procedure LoadFromStream(Stream: TStream; Endianness: THashEndianness = heDefault); override;
