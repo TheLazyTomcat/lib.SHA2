@@ -160,16 +160,16 @@ type
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-  TSHA2Length = (shal224, shal256, shal384, shal512, shal512_224, shal512_256);
+  TSHA2Length = (lenSHA224, lenSHA256, lenSHA384, lenSHA512, lenSHA512_224, lenSHA512_256);
 
   TSHA2 = record
     case HashLength: TSHA2Length of
-      shal224:      (SHA224:     TSHA224);
-      shal256:      (SHA256:     TSHA256);
-      shal384:      (SHA384:     TSHA384);
-      shal512:      (SHA512:     TSHA512);
-      shal512_224:  (SHA512_224: TSHA512_224);
-      shal512_256:  (SHA512_256: TSHA512_256);
+      lenSHA224:      (SHA224:     TSHA224);
+      lenSHA256:      (SHA256:     TSHA256);
+      lenSHA384:      (SHA384:     TSHA384);
+      lenSHA512:      (SHA512:     TSHA512);
+      lenSHA512_224:  (SHA512_224: TSHA512_224);
+      lenSHA512_256:  (SHA512_256: TSHA512_256);
   end;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  
@@ -823,12 +823,12 @@ Function InitialSHA2(HashLength: TSHA2Length): TSHA2;
 begin
 Result.HashLength := HashLength;
 case HashLength of
-  shal224:      Result.SHA224 := InitialSHA224;
-  shal256:      Result.SHA256 := InitialSHA256;
-  shal384:      Result.SHA384 := InitialSHA384;
-  shal512:      Result.SHA512 := InitialSHA512;
-  shal512_224:  Result.SHA512_224 := InitialSHA512_224;
-  shal512_256:  Result.SHA512_256 := InitialSHA512_256;
+  lenSHA224:      Result.SHA224 := InitialSHA224;
+  lenSHA256:      Result.SHA256 := InitialSHA256;
+  lenSHA384:      Result.SHA384 := InitialSHA384;
+  lenSHA512:      Result.SHA512 := InitialSHA512;
+  lenSHA512_224:  Result.SHA512_224 := InitialSHA512_224;
+  lenSHA512_256:  Result.SHA512_256 := InitialSHA512_256;
 else
   raise ESHA2InvalidLength.CreateFmt('InitialSHA2: Invalid hash length (%d)',[Ord(HashLength)]);
 end;
@@ -839,12 +839,12 @@ end;
 Function CreateByLength(HashLength: TSHA2Length): TSHA2Hash;
 begin
 case HashLength of
-  shal224:      Result := TSHA224Hash.Create;
-  shal256:      Result := TSHA256Hash.Create;
-  shal384:      Result := TSHA384Hash.Create;
-  shal512:      Result := TSHA512Hash.Create;
-  shal512_224:  Result := TSHA512_224Hash.Create;
-  shal512_256:  Result := TSHA512_256Hash.Create;
+  lenSHA224:      Result := TSHA224Hash.Create;
+  lenSHA256:      Result := TSHA256Hash.Create;
+  lenSHA384:      Result := TSHA384Hash.Create;
+  lenSHA512:      Result := TSHA512Hash.Create;
+  lenSHA512_224:  Result := TSHA512_224Hash.Create;
+  lenSHA512_256:  Result := TSHA512_256Hash.Create;
 else
   raise ESHA2InvalidLength.CreateFmt('CreateByLength: Invalid hash length (%d)',[Ord(HashLength)]);
 end;
@@ -855,12 +855,12 @@ end;
 Function CreateFromByLength(HashLength: TSHA2Length; Hash: TSHA2Hash): TSHA2Hash;
 begin
 case HashLength of
-  shal224:      Result := TSHA224Hash.CreateAndInitFrom(Hash);
-  shal256:      Result := TSHA256Hash.CreateAndInitFrom(Hash);
-  shal384:      Result := TSHA384Hash.CreateAndInitFrom(Hash);
-  shal512:      Result := TSHA512Hash.CreateAndInitFrom(Hash);
-  shal512_224:  Result := TSHA512_224Hash.CreateAndInitFrom(Hash);
-  shal512_256:  Result := TSHA512_256Hash.CreateAndInitFrom(Hash);
+  lenSHA224:      Result := TSHA224Hash.CreateAndInitFrom(Hash);
+  lenSHA256:      Result := TSHA256Hash.CreateAndInitFrom(Hash);
+  lenSHA384:      Result := TSHA384Hash.CreateAndInitFrom(Hash);
+  lenSHA512:      Result := TSHA512Hash.CreateAndInitFrom(Hash);
+  lenSHA512_224:  Result := TSHA512_224Hash.CreateAndInitFrom(Hash);
+  lenSHA512_256:  Result := TSHA512_256Hash.CreateAndInitFrom(Hash);
 else
   raise ESHA2InvalidLength.CreateFmt('CreateFromByLength(TSHA2Hash): Invalid hash length (%d)',[Ord(HashLength)]);
 end;
@@ -871,12 +871,12 @@ end;
 Function CreateFromByLength(HashLength: TSHA2Length; Hash: TSHA2): TSHA2Hash;
 begin
 case HashLength of
-  shal224:      Result := TSHA224Hash.CreateAndInitFrom(Hash);
-  shal256:      Result := TSHA256Hash.CreateAndInitFrom(Hash);
-  shal384:      Result := TSHA384Hash.CreateAndInitFrom(Hash);
-  shal512:      Result := TSHA512Hash.CreateAndInitFrom(Hash);
-  shal512_224:  Result := TSHA512_224Hash.CreateAndInitFrom(Hash);
-  shal512_256:  Result := TSHA512_256Hash.CreateAndInitFrom(Hash);
+  lenSHA224:      Result := TSHA224Hash.CreateAndInitFrom(Hash);
+  lenSHA256:      Result := TSHA256Hash.CreateAndInitFrom(Hash);
+  lenSHA384:      Result := TSHA384Hash.CreateAndInitFrom(Hash);
+  lenSHA512:      Result := TSHA512Hash.CreateAndInitFrom(Hash);
+  lenSHA512_224:  Result := TSHA512_224Hash.CreateAndInitFrom(Hash);
+  lenSHA512_256:  Result := TSHA512_256Hash.CreateAndInitFrom(Hash);
 else
   raise ESHA2InvalidLength.CreateFmt('CreateFromByLength(TSHA2): Invalid hash length (%d)',[Ord(HashLength)]);
 end;
@@ -1472,7 +1472,7 @@ end;
 
 class Function TSHA224Hash.HashLength: TSHA2Length;
 begin
-Result := shal224;
+Result := lenSHA224;
 end;
  
 //------------------------------------------------------------------------------
@@ -1657,7 +1657,7 @@ end;
 
 class Function TSHA256Hash.HashLength: TSHA2Length;
 begin
-Result := shal256;
+Result := lenSHA256;
 end;
  
 //------------------------------------------------------------------------------
@@ -1842,7 +1842,7 @@ end;
 
 class Function TSHA384Hash.HashLength: TSHA2Length;
 begin
-Result := shal384;
+Result := lenSHA384;
 end;
  
 //------------------------------------------------------------------------------
@@ -2027,7 +2027,7 @@ end;
 
 class Function TSHA512Hash.HashLength: TSHA2Length;
 begin
-Result := shal512;
+Result := lenSHA512;
 end;
  
 //------------------------------------------------------------------------------
@@ -2212,7 +2212,7 @@ end;
 
 class Function TSHA512_224Hash.HashLength: TSHA2Length;
 begin
-Result := shal512_224;
+Result := lenSHA512_224;
 end;
  
 //------------------------------------------------------------------------------
@@ -2397,7 +2397,7 @@ end;
 
 class Function TSHA512_256Hash.HashLength: TSHA2Length;
 begin
-Result := shal512_256;
+Result := lenSHA512_256;
 end;
  
 //------------------------------------------------------------------------------
@@ -2585,12 +2585,12 @@ end;
 Function SHA2ToStr(SHA2: TSHA2): String;
 begin
 case SHA2.HashLength of
-  shal224:      Result := SHA2ToStr(SHA2.SHA224);
-  shal256:      Result := SHA2ToStr(SHA2.SHA256);
-  shal384:      Result := SHA2ToStr(SHA2.SHA384);
-  shal512:      Result := SHA2ToStr(SHA2.SHA512);
-  shal512_224:  Result := SHA2ToStr(SHA2.SHA512_224);
-  shal512_256:  Result := SHA2ToStr(SHA2.SHA512_256);
+  lenSHA224:      Result := SHA2ToStr(SHA2.SHA224);
+  lenSHA256:      Result := SHA2ToStr(SHA2.SHA256);
+  lenSHA384:      Result := SHA2ToStr(SHA2.SHA384);
+  lenSHA512:      Result := SHA2ToStr(SHA2.SHA512);
+  lenSHA512_224:  Result := SHA2ToStr(SHA2.SHA512_224);
+  lenSHA512_256:  Result := SHA2ToStr(SHA2.SHA512_256);
 else
   raise ESHA2InvalidLength.CreateFmt('SHA2ToStr: Invalid hash length (%d)',[Ord(SHA2.HashLength)]);
 end;
@@ -2692,12 +2692,12 @@ Function StrToSHA2(HashLength: TSHA2Length; Str: String): TSHA2;
 begin
 Result.HashLength := HashLength;
 case HashLength of
-  shal224:      Result.SHA224 := StrToSHA2_224(Str);
-  shal256:      Result.SHA256 := StrToSHA2_256(Str);
-  shal384:      Result.SHA384 := StrToSHA2_384(Str);
-  shal512:      Result.SHA512 := StrToSHA2_512(Str);
-  shal512_224:  Result.SHA512_224 := StrToSHA2_512_224(Str);
-  shal512_256:  Result.SHA512_256 := StrToSHA2_512_256(Str);
+  lenSHA224:      Result.SHA224 := StrToSHA2_224(Str);
+  lenSHA256:      Result.SHA256 := StrToSHA2_256(Str);
+  lenSHA384:      Result.SHA384 := StrToSHA2_384(Str);
+  lenSHA512:      Result.SHA512 := StrToSHA2_512(Str);
+  lenSHA512_224:  Result.SHA512_224 := StrToSHA2_512_224(Str);
+  lenSHA512_256:  Result.SHA512_256 := StrToSHA2_512_256(Str);
 else
   raise ESHA2InvalidLength.CreateFmt('StrToSHA2: Invalid hash length (%d)',[Ord(HashLength)]);
 end;
@@ -2804,12 +2804,12 @@ end;
 Function TryStrToSHA2(HashLength: TSHA2Length; const Str: String; out SHA2: TSHA2): Boolean;
 begin
 case HashLength of
-  shal224:      Result := TryStrToSHA2(Str,SHA2.SHA224);
-  shal256:      Result := TryStrToSHA2(Str,SHA2.SHA256);
-  shal384:      Result := TryStrToSHA2(Str,SHA2.SHA384);
-  shal512:      Result := TryStrToSHA2(Str,SHA2.SHA512);
-  shal512_224:  Result := TryStrToSHA2(Str,SHA2.SHA512_224);
-  shal512_256:  Result := TryStrToSHA2(Str,SHA2.SHA512_256);
+  lenSHA224:      Result := TryStrToSHA2(Str,SHA2.SHA224);
+  lenSHA256:      Result := TryStrToSHA2(Str,SHA2.SHA256);
+  lenSHA384:      Result := TryStrToSHA2(Str,SHA2.SHA384);
+  lenSHA512:      Result := TryStrToSHA2(Str,SHA2.SHA512);
+  lenSHA512_224:  Result := TryStrToSHA2(Str,SHA2.SHA512_224);
+  lenSHA512_256:  Result := TryStrToSHA2(Str,SHA2.SHA512_256);
 else
   raise ESHA2InvalidLength.CreateFmt('TryStrToSHA2: Invalid hash length (%d)',[Ord(HashLength)]);
 end;
@@ -2913,12 +2913,12 @@ If HashLength = Default.HashLength then
   begin
     Result.HashLength := HashLength;
     case HashLength of
-      shal224:      Result.SHA224 := StrToSHA2Def(Str,Default.SHA224);
-      shal256:      Result.SHA256 := StrToSHA2Def(Str,Default.SHA256);
-      shal384:      Result.SHA384 := StrToSHA2Def(Str,Default.SHA384);
-      shal512:      Result.SHA512 := StrToSHA2Def(Str,Default.SHA512);
-      shal512_224:  Result.SHA512_224 := StrToSHA2Def(Str,Default.SHA512_224);
-      shal512_256:  Result.SHA512_256 := StrToSHA2Def(Str,Default.SHA512_256);
+      lenSHA224:      Result.SHA224 := StrToSHA2Def(Str,Default.SHA224);
+      lenSHA256:      Result.SHA256 := StrToSHA2Def(Str,Default.SHA256);
+      lenSHA384:      Result.SHA384 := StrToSHA2Def(Str,Default.SHA384);
+      lenSHA512:      Result.SHA512 := StrToSHA2Def(Str,Default.SHA512);
+      lenSHA512_224:  Result.SHA512_224 := StrToSHA2Def(Str,Default.SHA512_224);
+      lenSHA512_256:  Result.SHA512_256 := StrToSHA2Def(Str,Default.SHA512_256);
     else
       raise ESHA2InvalidLength.CreateFmt('StrToSHA2Def: Invalid hash length (%d)',[Ord(HashLength)]);
     end;
@@ -3055,12 +3055,12 @@ begin
 If A.HashLength = B.HashLength then
   begin
     case A.HashLength of
-      shal224:      Result := CompareSHA2(A.SHA224,B.SHA224);
-      shal256:      Result := CompareSHA2(A.SHA256,B.SHA256);
-      shal384:      Result := CompareSHA2(A.SHA384,B.SHA384);
-      shal512:      Result := CompareSHA2(A.SHA512,B.SHA512);
-      shal512_224:  Result := CompareSHA2(A.SHA512_224,B.SHA512_224);
-      shal512_256:  Result := CompareSHA2(A.SHA512_256,B.SHA512_256);
+      lenSHA224:      Result := CompareSHA2(A.SHA224,B.SHA224);
+      lenSHA256:      Result := CompareSHA2(A.SHA256,B.SHA256);
+      lenSHA384:      Result := CompareSHA2(A.SHA384,B.SHA384);
+      lenSHA512:      Result := CompareSHA2(A.SHA512,B.SHA512);
+      lenSHA512_224:  Result := CompareSHA2(A.SHA512_224,B.SHA512_224);
+      lenSHA512_256:  Result := CompareSHA2(A.SHA512_256,B.SHA512_256);
     else
       raise ESHA2InvalidLength.CreateFmt('CompareSHA2: Invalid hash length (%d)',[Ord(A.HashLength)]);
     end;
@@ -3195,12 +3195,12 @@ begin
 If A.HashLength = B.HashLength then
   begin
     case A.HashLength of
-      shal224:      Result := SameSHA2(A.SHA224,B.SHA224);
-      shal256:      Result := SameSHA2(A.SHA256,B.SHA256);
-      shal384:      Result := SameSHA2(A.SHA384,B.SHA384);
-      shal512:      Result := SameSHA2(A.SHA512,B.SHA512);
-      shal512_224:  Result := SameSHA2(A.SHA512_224,B.SHA512_224);
-      shal512_256:  Result := SameSHA2(A.SHA512_256,B.SHA512_256);
+      lenSHA224:      Result := SameSHA2(A.SHA224,B.SHA224);
+      lenSHA256:      Result := SameSHA2(A.SHA256,B.SHA256);
+      lenSHA384:      Result := SameSHA2(A.SHA384,B.SHA384);
+      lenSHA512:      Result := SameSHA2(A.SHA512,B.SHA512);
+      lenSHA512_224:  Result := SameSHA2(A.SHA512_224,B.SHA512_224);
+      lenSHA512_256:  Result := SameSHA2(A.SHA512_256,B.SHA512_256);
     else
       raise ESHA2InvalidLength.CreateFmt('SameSHA2: Invalid hash length (%d)',[Ord(A.HashLength)]);
     end;
@@ -3396,12 +3396,12 @@ end;
 procedure BufferSHA2(var SHA2: TSHA2; const Buffer; Size: TMemSize);
 begin
 case SHA2.HashLength of
-  shal224:      BufferSHA2(SHA2.SHA224,Buffer,Size);
-  shal256:      BufferSHA2(SHA2.SHA256,Buffer,Size);
-  shal384:      BufferSHA2(SHA2.SHA384,Buffer,Size);
-  shal512:      BufferSHA2(SHA2.SHA512,Buffer,Size);
-  shal512_224:  BufferSHA2(SHA2.SHA512_224,Buffer,Size);
-  shal512_256:  BufferSHA2(SHA2.SHA512_256,Buffer,Size);
+  lenSHA224:      BufferSHA2(SHA2.SHA224,Buffer,Size);
+  lenSHA256:      BufferSHA2(SHA2.SHA256,Buffer,Size);
+  lenSHA384:      BufferSHA2(SHA2.SHA384,Buffer,Size);
+  lenSHA512:      BufferSHA2(SHA2.SHA512,Buffer,Size);
+  lenSHA512_224:  BufferSHA2(SHA2.SHA512_224,Buffer,Size);
+  lenSHA512_256:  BufferSHA2(SHA2.SHA512_256,Buffer,Size);
 else
   raise ESHA2InvalidLength.CreateFmt('BufferSHA2: Invalid hash length (%d)',[Ord(SHA2.HashLength)]);
 end;
@@ -3565,12 +3565,12 @@ Function LastBufferSHA2(SHA2: TSHA2; const Buffer; Size: TMemSize; MessageLength
 begin
 Result.HashLength := SHA2.HashLength;
 case SHA2.HashLength of
-  shal224:      Result.SHA224 := LastBufferSHA2(SHA2.SHA224,Buffer,Size,MessageLength);
-  shal256:      Result.SHA256 := LastBufferSHA2(SHA2.SHA256,Buffer,Size,MessageLength);
-  shal384:      Result.SHA384 := LastBufferSHA2(SHA2.SHA384,Buffer,Size,MessageLength);
-  shal512:      Result.SHA512 := LastBufferSHA2(SHA2.SHA512,Buffer,Size,MessageLength);
-  shal512_224:  Result.SHA512_224 := LastBufferSHA2(SHA2.SHA512_224,Buffer,Size,MessageLength);
-  shal512_256:  Result.SHA512_256 := LastBufferSHA2(SHA2.SHA512_256,Buffer,Size,MessageLength);
+  lenSHA224:      Result.SHA224 := LastBufferSHA2(SHA2.SHA224,Buffer,Size,MessageLength);
+  lenSHA256:      Result.SHA256 := LastBufferSHA2(SHA2.SHA256,Buffer,Size,MessageLength);
+  lenSHA384:      Result.SHA384 := LastBufferSHA2(SHA2.SHA384,Buffer,Size,MessageLength);
+  lenSHA512:      Result.SHA512 := LastBufferSHA2(SHA2.SHA512,Buffer,Size,MessageLength);
+  lenSHA512_224:  Result.SHA512_224 := LastBufferSHA2(SHA2.SHA512_224,Buffer,Size,MessageLength);
+  lenSHA512_256:  Result.SHA512_256 := LastBufferSHA2(SHA2.SHA512_256,Buffer,Size,MessageLength);
 else
   raise ESHA2InvalidLength.CreateFmt('LastBufferSHA2: Invalid hash length (%d)',[Ord(SHA2.HashLength)]);
 end;
@@ -3582,12 +3582,12 @@ Function LastBufferSHA2(SHA2: TSHA2; const Buffer; Size: TMemSize; MessageLength
 begin
 Result.HashLength := SHA2.HashLength;
 case SHA2.HashLength of
-  shal224:      Result.SHA224 := LastBufferSHA2(SHA2.SHA224,Buffer,Size,MessageLengthLo);
-  shal256:      Result.SHA256 := LastBufferSHA2(SHA2.SHA256,Buffer,Size,MessageLengthLo);
-  shal384:      Result.SHA384 := LastBufferSHA2(SHA2.SHA384,Buffer,Size,MessageLengthLo,MessageLengthHi);
-  shal512:      Result.SHA512 := LastBufferSHA2(SHA2.SHA512,Buffer,Size,MessageLengthLo,MessageLengthHi);
-  shal512_224:  Result.SHA512_224 := LastBufferSHA2(SHA2.SHA512_224,Buffer,Size,MessageLengthLo,MessageLengthHi);
-  shal512_256:  Result.SHA512_256 := LastBufferSHA2(SHA2.SHA512_256,Buffer,Size,MessageLengthLo,MessageLengthHi);
+  lenSHA224:      Result.SHA224 := LastBufferSHA2(SHA2.SHA224,Buffer,Size,MessageLengthLo);
+  lenSHA256:      Result.SHA256 := LastBufferSHA2(SHA2.SHA256,Buffer,Size,MessageLengthLo);
+  lenSHA384:      Result.SHA384 := LastBufferSHA2(SHA2.SHA384,Buffer,Size,MessageLengthLo,MessageLengthHi);
+  lenSHA512:      Result.SHA512 := LastBufferSHA2(SHA2.SHA512,Buffer,Size,MessageLengthLo,MessageLengthHi);
+  lenSHA512_224:  Result.SHA512_224 := LastBufferSHA2(SHA2.SHA512_224,Buffer,Size,MessageLengthLo,MessageLengthHi);
+  lenSHA512_256:  Result.SHA512_256 := LastBufferSHA2(SHA2.SHA512_256,Buffer,Size,MessageLengthLo,MessageLengthHi);
 else
   raise ESHA2InvalidLength.CreateFmt('LastBufferSHA2: Invalid hash length (%d)',[Ord(SHA2.HashLength)]);
 end;
@@ -3599,12 +3599,12 @@ Function LastBufferSHA2(SHA2: TSHA2; const Buffer; Size: TMemSize; MessageLength
 begin
 Result.HashLength := SHA2.HashLength;
 case SHA2.HashLength of
-  shal224:      Result.SHA224 := LastBufferSHA2(SHA2.SHA224,Buffer,Size,MessageLength.Lo);
-  shal256:      Result.SHA256 := LastBufferSHA2(SHA2.SHA256,Buffer,Size,MessageLength.Lo);
-  shal384:      Result.SHA384 := LastBufferSHA2(SHA2.SHA384,Buffer,Size,MessageLength);
-  shal512:      Result.SHA512 := LastBufferSHA2(SHA2.SHA512,Buffer,Size,MessageLength);
-  shal512_224:  Result.SHA512_224 := LastBufferSHA2(SHA2.SHA512_224,Buffer,Size,MessageLength);
-  shal512_256:  Result.SHA512_256 := LastBufferSHA2(SHA2.SHA512_256,Buffer,Size,MessageLength);
+  lenSHA224:      Result.SHA224 := LastBufferSHA2(SHA2.SHA224,Buffer,Size,MessageLength.Lo);
+  lenSHA256:      Result.SHA256 := LastBufferSHA2(SHA2.SHA256,Buffer,Size,MessageLength.Lo);
+  lenSHA384:      Result.SHA384 := LastBufferSHA2(SHA2.SHA384,Buffer,Size,MessageLength);
+  lenSHA512:      Result.SHA512 := LastBufferSHA2(SHA2.SHA512,Buffer,Size,MessageLength);
+  lenSHA512_224:  Result.SHA512_224 := LastBufferSHA2(SHA2.SHA512_224,Buffer,Size,MessageLength);
+  lenSHA512_256:  Result.SHA512_256 := LastBufferSHA2(SHA2.SHA512_256,Buffer,Size,MessageLength);
 else
   raise ESHA2InvalidLength.CreateFmt('LastBufferSHA2: Invalid hash length (%d)',[Ord(SHA2.HashLength)]);
 end;
@@ -3658,12 +3658,12 @@ Function LastBufferSHA2(SHA2: TSHA2; const Buffer; Size: TMemSize): TSHA2;
 begin
 Result.HashLength := SHA2.HashLength;
 case SHA2.HashLength of
-  shal224:      Result.SHA224 := LastBufferSHA2(SHA2.SHA224,Buffer,Size);
-  shal256:      Result.SHA256 := LastBufferSHA2(SHA2.SHA256,Buffer,Size);
-  shal384:      Result.SHA384 := LastBufferSHA2(SHA2.SHA384,Buffer,Size);
-  shal512:      Result.SHA512 := LastBufferSHA2(SHA2.SHA512,Buffer,Size);
-  shal512_224:  Result.SHA512_224 := LastBufferSHA2(SHA2.SHA512_224,Buffer,Size);
-  shal512_256:  Result.SHA512_256 := LastBufferSHA2(SHA2.SHA512_256,Buffer,Size);
+  lenSHA224:      Result.SHA224 := LastBufferSHA2(SHA2.SHA224,Buffer,Size);
+  lenSHA256:      Result.SHA256 := LastBufferSHA2(SHA2.SHA256,Buffer,Size);
+  lenSHA384:      Result.SHA384 := LastBufferSHA2(SHA2.SHA384,Buffer,Size);
+  lenSHA512:      Result.SHA512 := LastBufferSHA2(SHA2.SHA512,Buffer,Size);
+  lenSHA512_224:  Result.SHA512_224 := LastBufferSHA2(SHA2.SHA512_224,Buffer,Size);
+  lenSHA512_256:  Result.SHA512_256 := LastBufferSHA2(SHA2.SHA512_256,Buffer,Size);
 else
   raise ESHA2InvalidLength.CreateFmt('LastBufferSHA2: Invalid hash length (%d)',[Ord(SHA2.HashLength)]);
 end;
