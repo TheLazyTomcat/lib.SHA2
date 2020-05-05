@@ -1526,7 +1526,7 @@ procedure TSHA224Hash.FromStringDef(const Str: String; const Default: TSHA224);
 begin
 inherited FromStringDef(Str,Default);
 If not TryFromString(Str) then
-  fSHA2 := TSHA2Sys_32(SHA224ToSys(ZeroSHA224));
+  fSHA2 := TSHA2Sys_32(SHA224ToSys(Default));
 end;
 
 
@@ -1711,7 +1711,7 @@ procedure TSHA256Hash.FromStringDef(const Str: String; const Default: TSHA256);
 begin
 inherited FromStringDef(Str,Default);
 If not TryFromString(Str) then
-  fSHA2 := TSHA2Sys_32(SHA256ToSys(ZeroSHA256));
+  fSHA2 := TSHA2Sys_32(SHA256ToSys(Default));
 end;
 
 
@@ -1896,7 +1896,7 @@ procedure TSHA384Hash.FromStringDef(const Str: String; const Default: TSHA384);
 begin
 inherited FromStringDef(Str,Default);
 If not TryFromString(Str) then
-  fSHA2 := TSHA2Sys_64(SHA384ToSys(ZeroSHA384));
+  fSHA2 := TSHA2Sys_64(SHA384ToSys(Default));
 end;
 
 
@@ -2081,7 +2081,7 @@ procedure TSHA512Hash.FromStringDef(const Str: String; const Default: TSHA512);
 begin
 inherited FromStringDef(Str,Default);
 If not TryFromString(Str) then
-  fSHA2 := TSHA2Sys_64(SHA512ToSys(ZeroSHA512));
+  fSHA2 := TSHA2Sys_64(SHA512ToSys(Default));
 end;
 
 
@@ -2266,7 +2266,7 @@ procedure TSHA512_224Hash.FromStringDef(const Str: String; const Default: TSHA51
 begin
 inherited FromStringDef(Str,Default);
 If not TryFromString(Str) then
-  fSHA2 := TSHA2Sys_64(SHA512_224ToSys(ZeroSHA512_224));
+  fSHA2 := TSHA2Sys_64(SHA512_224ToSys(Default));
 end;
 
 
@@ -2451,7 +2451,7 @@ procedure TSHA512_256Hash.FromStringDef(const Str: String; const Default: TSHA51
 begin
 inherited FromStringDef(Str,Default);
 If not TryFromString(Str) then
-  fSHA2 := TSHA2Sys_64(SHA512_256ToSys(ZeroSHA512_256));
+  fSHA2 := TSHA2Sys_64(SHA512_256ToSys(Default));
 end;
 
 
