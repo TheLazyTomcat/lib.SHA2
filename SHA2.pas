@@ -40,7 +40,7 @@
 
   Version 1.1.2 (2020-05-09)
 
-  Last change 2020-05-09
+  Last change 2020-05-10
 
   ©2015-2020 František Milt
 
@@ -103,10 +103,10 @@ type
   UInt128 = packed record
     case Integer of
       0:(Lo,Hi:   UInt64);
-      1:(Bytes:   array[0..15] of UInt8);
-      2:(Words:   array[0..7] of UInt16);
-      3:(DWords:  array[0..3] of UInt32);
-      4:(QWords:  array[0..1] of UInt64);
+      1:(Bytes:   packed array[0..15] of UInt8);
+      2:(Words:   packed array[0..7] of UInt16);
+      3:(DWords:  packed array[0..3] of UInt32);
+      4:(QWords:  packed array[0..1] of UInt64);
   end;
   PUInt128 = ^UInt128;
 
@@ -145,18 +145,18 @@ procedure EndianSwapValue(var Value: UInt128); overload;{$IFDEF CanInline} inlin
   present only for the sake of completeness.
 }
 type
-  TSHA2_32 = array[0..31] of UInt8;     PSHA2_32 = ^TSHA2_32;
+  TSHA2_32 = packed array[0..31] of UInt8;  PSHA2_32 = ^TSHA2_32;
 
-  TSHA224 = type TSHA2_32;              PSHA224 = ^TSHA224;
-  TSHA256 = type TSHA2_32;              PSHA256 = ^TSHA256;
+  TSHA224 = type TSHA2_32;                  PSHA224 = ^TSHA224;
+  TSHA256 = type TSHA2_32;                  PSHA256 = ^TSHA256;
 
-  TSHA2_64 = array[0..63] of UInt8;     PSHA2_64 = ^TSHA2_64;
+  TSHA2_64 = packed array[0..63] of UInt8;  PSHA2_64 = ^TSHA2_64;
 
-  TSHA384 = type TSHA2_64;              PSHA384 = ^TSHA384;
-  TSHA512 = type TSHA2_64;              PSHA512 = ^TSHA512;
+  TSHA384 = type TSHA2_64;                  PSHA384 = ^TSHA384;
+  TSHA512 = type TSHA2_64;                  PSHA512 = ^TSHA512;
 
-  TSHA512_224 = type TSHA2_64;          PSHA512_224 = ^TSHA512_224;
-  TSHA512_256 = type TSHA2_64;          PSHA512_256 = ^TSHA512_256;
+  TSHA512_224 = type TSHA2_64;              PSHA512_224 = ^TSHA512_224;
+  TSHA512_256 = type TSHA2_64;              PSHA512_256 = ^TSHA512_256;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -174,7 +174,7 @@ type
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  
 
-  TSHA2Sys_32 = record
+  TSHA2Sys_32 = packed record
     PartA:  UInt32;
     PartB:  UInt32;
     PartC:  UInt32;
@@ -189,7 +189,7 @@ type
   TSHA224Sys = type TSHA2Sys_32;      PSHA224Sys = ^TSHA224Sys;
   TSHA256Sys = type TSHA2Sys_32;      PSHA256Sys = ^TSHA256Sys;
 
-  TSHA2Sys_64 = record
+  TSHA2Sys_64 = packed record
     PartA:  UInt64;
     PartB:  UInt64;
     PartC:  UInt64;
@@ -287,7 +287,7 @@ type
 ================================================================================
 -------------------------------------------------------------------------------}
 type
-  TSHA2HashBuffer = array[0..64] of UInt8;
+  TSHA2HashBuffer = packed array[0..64] of UInt8;
 
 {===============================================================================
     TSHA2Hash - class declaration
@@ -1157,7 +1157,7 @@ var
   i:            Integer;
   Temp1,Temp2:  UInt32;
   Schedule:     array[0..63] of UInt32;
-  BlockWords:   array[0..15] of UInt32 absolute Block;
+  BlockWords:   packed array[0..15] of UInt32 absolute Block;
 begin
 Hash := fSHA2;
 For i := 0 to 15 do
@@ -1281,7 +1281,7 @@ var
   i:            Integer;
   Temp1,Temp2:  UInt64;
   Schedule:     array[0..79] of UInt64;
-  BlockWords:   array[0..15] of UInt64 absolute Block;
+  BlockWords:   packed array[0..15] of UInt64 absolute Block;
 begin
 Hash := fSHA2;
 For i := 0 to 15 do
