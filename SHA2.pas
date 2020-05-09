@@ -1063,7 +1063,7 @@ procedure TSHA2Hash.FromStringDef(const Str: String; const Default: TSHA2);
 begin
 inherited FromStringDef(Str,Default);
 If Default.HashFunction <> HashFunction then
-  raise ESHA2IncompatibleFunction.CreateFmt('TSHA2Hash.FromStringDef: Incompatible function (%d).',[Ord(SHA2.HashFunction)]);
+  raise ESHA2IncompatibleFunction.CreateFmt('TSHA2Hash.FromStringDef: Incompatible function (%d).',[Ord(Default.HashFunction)]);
 end;
 
 //------------------------------------------------------------------------------
