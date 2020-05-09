@@ -38,9 +38,9 @@
     32bit systems. On the other hand, they seem to give better performance on
     64bit systems than 32bit-based hashes.
 
-  Version 1.1.1 (2020-05-05)
+  Version 1.1.2 (2020-05-09)
 
-  Last change 2020-05-05
+  Last change 2020-05-09
 
   ©2015-2020 František Milt
 
@@ -317,6 +317,7 @@ type
     Function Compare(Hash: THashBase): Integer; override;
     Function AsString: String; override;
     procedure FromString(const Str: String); override;
+    procedure FromStringDef(const Str: String; const Default: TSHA2); reintroduce; overload; virtual;
   {
     Note that, by default, the hash is streamed in its entirety, not only
     observed bytes. How many bytes will be written/read is equal to HashSize.
@@ -402,7 +403,8 @@ type
     constructor CreateAndInitFrom(Hash: TSHA2); overload; override;
     constructor CreateAndInitFrom(Hash: TSHA224); overload; virtual;
     procedure Init; override;
-    procedure FromStringDef(const Str: String; const Default: TSHA224); reintroduce;
+    procedure FromStringDef(const Str: String; const Default: TSHA2); overload; override;
+    procedure FromStringDef(const Str: String; const Default: TSHA224); overload; virtual;
     property SHA224: TSHA224 read GetSHA224;
     property SHA224Sys: TSHA224Sys read GetSHA224Sys;
   end;
@@ -438,7 +440,8 @@ type
     constructor CreateAndInitFrom(Hash: TSHA2); overload; override;
     constructor CreateAndInitFrom(Hash: TSHA256); overload; virtual;
     procedure Init; override;
-    procedure FromStringDef(const Str: String; const Default: TSHA256); reintroduce;
+    procedure FromStringDef(const Str: String; const Default: TSHA2); overload; override;
+    procedure FromStringDef(const Str: String; const Default: TSHA256); overload; virtual;
     property SHA256: TSHA256 read GetSHA256;
     property SHA256Sys: TSHA256Sys read GetSHA256Sys;
   end;
@@ -474,7 +477,8 @@ type
     constructor CreateAndInitFrom(Hash: TSHA2); overload; override;
     constructor CreateAndInitFrom(Hash: TSHA384); overload; virtual;
     procedure Init; override;
-    procedure FromStringDef(const Str: String; const Default: TSHA384); reintroduce;
+    procedure FromStringDef(const Str: String; const Default: TSHA2); overload; override;
+    procedure FromStringDef(const Str: String; const Default: TSHA384); overload; virtual;
     property SHA384: TSHA384 read GetSHA384;
     property SHA384Sys: TSHA384Sys read GetSHA384Sys;
   end;
@@ -510,7 +514,8 @@ type
     constructor CreateAndInitFrom(Hash: TSHA2); overload; override;
     constructor CreateAndInitFrom(Hash: TSHA512); overload; virtual;
     procedure Init; override;
-    procedure FromStringDef(const Str: String; const Default: TSHA512); reintroduce;
+    procedure FromStringDef(const Str: String; const Default: TSHA2); overload; override;
+    procedure FromStringDef(const Str: String; const Default: TSHA512); overload; virtual;
     property SHA512: TSHA512 read GetSHA512;
     property SHA512Sys: TSHA512Sys read GetSHA512Sys;
   end;
@@ -546,7 +551,8 @@ type
     constructor CreateAndInitFrom(Hash: TSHA2); overload; override;
     constructor CreateAndInitFrom(Hash: TSHA512_224); overload; virtual;
     procedure Init; override;
-    procedure FromStringDef(const Str: String; const Default: TSHA512_224); reintroduce;
+    procedure FromStringDef(const Str: String; const Default: TSHA2); overload; override;
+    procedure FromStringDef(const Str: String; const Default: TSHA512_224); overload; virtual;
     property SHA512_224: TSHA512_224 read GetSHA512_224;
     property SHA512_224Sys: TSHA512_224Sys read GetSHA512_224Sys;
   end;
@@ -582,7 +588,8 @@ type
     constructor CreateAndInitFrom(Hash: TSHA2); overload; override;
     constructor CreateAndInitFrom(Hash: TSHA512_256); overload; virtual;
     procedure Init; override;
-    procedure FromStringDef(const Str: String; const Default: TSHA512_256); reintroduce;
+    procedure FromStringDef(const Str: String; const Default: TSHA2); overload; override;
+    procedure FromStringDef(const Str: String; const Default: TSHA512_256); overload; virtual;
     property SHA512_256: TSHA512_256 read GetSHA512_256;
     property SHA512_256Sys: TSHA512_256Sys read GetSHA512_256Sys;
   end;
@@ -1048,6 +1055,15 @@ FillChar(Addr(HashBuffer)^,SizeOf(TSHA2HashBuffer),0);
 For i := 0 to Pred(HashObservedSize) do
   HashBuffer[i] := UInt8(StrToInt('$' + Copy(TempStr,(i * 2) + 1,2)));
 SetHashBuffer(HashBuffer);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TSHA2Hash.FromStringDef(const Str: String; const Default: TSHA2);
+begin
+inherited FromStringDef(Str,Default);
+If Default.HashFunction <> HashFunction then
+  raise ESHA2IncompatibleFunction.CreateFmt('TSHA2Hash.FromStringDef: Incompatible function (%d).',[Ord(SHA2.HashFunction)]);
 end;
 
 //------------------------------------------------------------------------------
@@ -1522,9 +1538,16 @@ end;
 
 //------------------------------------------------------------------------------
 
-procedure TSHA224Hash.FromStringDef(const Str: String; const Default: TSHA224);
+procedure TSHA224Hash.FromStringDef(const Str: String; const Default: TSHA2);
 begin
 inherited FromStringDef(Str,Default);
+FromStringDef(Str,Default.SHA224);
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+procedure TSHA224Hash.FromStringDef(const Str: String; const Default: TSHA224);
+begin
 If not TryFromString(Str) then
   fSHA2 := TSHA2Sys_32(SHA224ToSys(Default));
 end;
@@ -1707,9 +1730,16 @@ end;
 
 //------------------------------------------------------------------------------
 
-procedure TSHA256Hash.FromStringDef(const Str: String; const Default: TSHA256);
+procedure TSHA256Hash.FromStringDef(const Str: String; const Default: TSHA2);
 begin
 inherited FromStringDef(Str,Default);
+FromStringDef(Str,Default.SHA256);
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+procedure TSHA256Hash.FromStringDef(const Str: String; const Default: TSHA256);
+begin
 If not TryFromString(Str) then
   fSHA2 := TSHA2Sys_32(SHA256ToSys(Default));
 end;
@@ -1892,9 +1922,16 @@ end;
 
 //------------------------------------------------------------------------------
 
-procedure TSHA384Hash.FromStringDef(const Str: String; const Default: TSHA384);
+procedure TSHA384Hash.FromStringDef(const Str: String; const Default: TSHA2);
 begin
 inherited FromStringDef(Str,Default);
+FromStringDef(Str,Default.SHA384);
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+procedure TSHA384Hash.FromStringDef(const Str: String; const Default: TSHA384);
+begin
 If not TryFromString(Str) then
   fSHA2 := TSHA2Sys_64(SHA384ToSys(Default));
 end;
@@ -2077,9 +2114,16 @@ end;
 
 //------------------------------------------------------------------------------
 
-procedure TSHA512Hash.FromStringDef(const Str: String; const Default: TSHA512);
+procedure TSHA512Hash.FromStringDef(const Str: String; const Default: TSHA2);
 begin
 inherited FromStringDef(Str,Default);
+FromStringDef(Str,Default.SHA512);
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+procedure TSHA512Hash.FromStringDef(const Str: String; const Default: TSHA512);
+begin
 If not TryFromString(Str) then
   fSHA2 := TSHA2Sys_64(SHA512ToSys(Default));
 end;
@@ -2262,9 +2306,16 @@ end;
 
 //------------------------------------------------------------------------------
 
-procedure TSHA512_224Hash.FromStringDef(const Str: String; const Default: TSHA512_224);
+procedure TSHA512_224Hash.FromStringDef(const Str: String; const Default: TSHA2);
 begin
 inherited FromStringDef(Str,Default);
+FromStringDef(Str,Default.SHA512_224);
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+procedure TSHA512_224Hash.FromStringDef(const Str: String; const Default: TSHA512_224);
+begin
 If not TryFromString(Str) then
   fSHA2 := TSHA2Sys_64(SHA512_224ToSys(Default));
 end;
@@ -2447,9 +2498,16 @@ end;
 
 //------------------------------------------------------------------------------
 
-procedure TSHA512_256Hash.FromStringDef(const Str: String; const Default: TSHA512_256);
+procedure TSHA512_256Hash.FromStringDef(const Str: String; const Default: TSHA2);
 begin
 inherited FromStringDef(Str,Default);
+FromStringDef(Str,Default.SHA512_256);
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+procedure TSHA512_256Hash.FromStringDef(const Str: String; const Default: TSHA512_256);
+begin
 If not TryFromString(Str) then
   fSHA2 := TSHA2Sys_64(SHA512_256ToSys(Default));
 end;
