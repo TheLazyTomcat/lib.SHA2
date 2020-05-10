@@ -1061,8 +1061,9 @@ end;
 
 procedure TSHA2Hash.FromStringDef(const Str: String; const Default: TSHA2);
 begin
-inherited FromStringDef(Str,Default);
-If Default.HashFunction <> HashFunction then
+If Default.HashFunction = HashFunction then
+  inherited FromStringDef(Str,Default)
+else
   raise ESHA2IncompatibleFunction.CreateFmt('TSHA2Hash.FromStringDef: Incompatible function (%d).',[Ord(Default.HashFunction)]);
 end;
 
