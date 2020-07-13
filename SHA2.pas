@@ -38,9 +38,9 @@
     32bit systems. On the other hand, they seem to give better performance on
     64bit systems than 32bit-based hashes.
 
-  Version 1.1.2 (2020-05-09)
+  Version 1.1.3 (2020-07-13)
 
-  Last change 2020-05-10
+  Last change 2020-07-13
 
   ©2015-2020 František Milt
 
@@ -305,6 +305,7 @@ type
     procedure ProcessFirst(const Block); override;
   public
     class Function HashEndianness: THashEndianness; override;
+    class Function HashFinalization: Boolean; override;
     class Function HashFunction: TSHA2Function; virtual; abstract;
   {
     Since HashSize returns technical size of the hash, which is not always the
@@ -996,6 +997,13 @@ end;
 
 //------------------------------------------------------------------------------
 
+class Function TSHA2Hash.HashFinalization: Boolean;
+begin
+Result := True;
+end;
+
+//------------------------------------------------------------------------------
+
 Function TSHA2Hash.Compare(Hash: THashBase): Integer;
 var
   A,B:  TSHA2HashBuffer;
@@ -1197,35 +1205,35 @@ end;
 
 procedure TSHA2Hash_32.ProcessLast;
 begin
-If (fBlockSize - fTempCount) >= (SizeOf(UInt64) + 1) then
+If (fBlockSize - fTransCount) >= (SizeOf(UInt64) + 1) then
   begin
     // padding and length can fit
   {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
-    FillChar(Pointer(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^,fBlockSize - fTempCount,0);
-    PUInt8(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^ := $80;
-    PUInt64(PtrUInt(fTempBlock) - SizeOf(UInt64) + PtrUInt(fBlockSize))^ :=
+    FillChar(Pointer(PtrUInt(fTransBlock) + PtrUInt(fTransCount))^,fBlockSize - fTransCount,0);
+    PUInt8(PtrUInt(fTransBlock) + PtrUInt(fTransCount))^ := $80;
+    PUInt64(PtrUInt(fTransBlock) - SizeOf(UInt64) + PtrUInt(fBlockSize))^ :=
       {$IFNDEF ENDIAN_BIG}EndianSwap{$ENDIF}(UInt64(fProcessedBytes) * 8);
   {$IFDEF FPCDWM}{$POP}{$ENDIF}
-    ProcessBlock(fTempBlock^);
+    ProcessBlock(fTransBlock^);
   end
 else
   begin
     // padding and length cannot fit  
-    If fBlockSize > fTempCount then
+    If fBlockSize > fTransCount then
       begin
       {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
-        FillChar(Pointer(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^,fBlockSize - fTempCount,0);
-        PUInt8(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^ := $80;
+        FillChar(Pointer(PtrUInt(fTransBlock) + PtrUInt(fTransCount))^,fBlockSize - fTransCount,0);
+        PUInt8(PtrUInt(fTransBlock) + PtrUInt(fTransCount))^ := $80;
       {$IFDEF FPCDWM}{$POP}{$ENDIF}
-        ProcessBlock(fTempBlock^);
-        FillChar(fTempBlock^,fBlockSize,0);
+        ProcessBlock(fTransBlock^);
+        FillChar(fTransBlock^,fBlockSize,0);
       {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
-        PUInt64(PtrUInt(fTempBlock) - SizeOf(UInt64) + PtrUInt(fBlockSize))^ :=
+        PUInt64(PtrUInt(fTransBlock) - SizeOf(UInt64) + PtrUInt(fBlockSize))^ :=
           {$IFNDEF ENDIAN_BIG}EndianSwap{$ENDIF}(UInt64(fProcessedBytes) * 8);
       {$IFDEF FPCDWM}{$POP}{$ENDIF}
-        ProcessBlock(fTempBlock^);        
+        ProcessBlock(fTransBlock^);        
       end
-    else raise ESHA2ProcessingError.CreateFmt('TSHA2Hash_32.ProcessLast: Invalid data transfer (%d).',[fTempCount]);
+    else raise ESHA2ProcessingError.CreateFmt('TSHA2Hash_32.ProcessLast: Invalid data transfer (%d).',[fTransCount]);
   end;
 end;
 
@@ -1321,35 +1329,35 @@ end;
 
 procedure TSHA2Hash_64.ProcessLast;
 begin
-If (fBlockSize - fTempCount) >= (SizeOf(UInt128) + 1) then
+If (fBlockSize - fTransCount) >= (SizeOf(UInt128) + 1) then
   begin
     // padding and length can fit
   {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
-    FillChar(Pointer(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^,fBlockSize - fTempCount,0);
-    PUInt8(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^ := $80;
-    PUInt128(PtrUInt(fTempBlock) - SizeOf(UInt128) + PtrUInt(fBlockSize))^ :=
+    FillChar(Pointer(PtrUInt(fTransBlock) + PtrUInt(fTransCount))^,fBlockSize - fTransCount,0);
+    PUInt8(PtrUInt(fTransBlock) + PtrUInt(fTransCount))^ := $80;
+    PUInt128(PtrUInt(fTransBlock) - SizeOf(UInt128) + PtrUInt(fBlockSize))^ :=
       {$IFNDEF ENDIAN_BIG}EndianSwap{$ENDIF}(SizeToMessageLength(fProcessedBytes));
   {$IFDEF FPCDWM}{$POP}{$ENDIF}
-    ProcessBlock(fTempBlock^);
+    ProcessBlock(fTransBlock^);
   end
 else
   begin
     // padding and length cannot fit  
-    If fBlockSize > fTempCount then
+    If fBlockSize > fTransCount then
       begin
       {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
-        FillChar(Pointer(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^,fBlockSize - fTempCount,0);
-        PUInt8(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^ := $80;
+        FillChar(Pointer(PtrUInt(fTransBlock) + PtrUInt(fTransCount))^,fBlockSize - fTransCount,0);
+        PUInt8(PtrUInt(fTransBlock) + PtrUInt(fTransCount))^ := $80;
       {$IFDEF FPCDWM}{$POP}{$ENDIF}
-        ProcessBlock(fTempBlock^);
-        FillChar(fTempBlock^,fBlockSize,0);
+        ProcessBlock(fTransBlock^);
+        FillChar(fTransBlock^,fBlockSize,0);
       {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
-        PUInt128(PtrUInt(fTempBlock) - SizeOf(UInt128) + PtrUInt(fBlockSize))^ :=
+        PUInt128(PtrUInt(fTransBlock) - SizeOf(UInt128) + PtrUInt(fBlockSize))^ :=
           {$IFNDEF ENDIAN_BIG}EndianSwap{$ENDIF}(SizeToMessageLength(fProcessedBytes));
       {$IFDEF FPCDWM}{$POP}{$ENDIF}
-        ProcessBlock(fTempBlock^);        
+        ProcessBlock(fTransBlock^);        
       end
-    else raise ESHA2ProcessingError.CreateFmt('TSHA2Hash_64.ProcessLast: Invalid data transfer (%d).',[fTempCount]);
+    else raise ESHA2ProcessingError.CreateFmt('TSHA2Hash_64.ProcessLast: Invalid data transfer (%d).',[fTransCount]);
   end;
 end;
 
