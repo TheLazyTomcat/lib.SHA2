@@ -40,7 +40,7 @@
 
   Version 1.1.3 (2020-07-13)
 
-  Last change 2020-07-13
+  Last change 2020-08-02
 
   ©2015-2020 František Milt
 
@@ -85,6 +85,7 @@ unit SHA2;
     {$UNDEF CanInline}
   {$IFEND}
 {$ENDIF}
+{$H+}
 
 {$IFOPT Q+}
   {$DEFINE OverflowChecks}
