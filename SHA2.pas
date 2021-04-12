@@ -40,9 +40,9 @@
 
   Version 1.1.3 (2020-07-13)
 
-  Last change 2020-08-02
+  Last change 2021-04-12
 
-  ©2015-2020 František Milt
+  ©2015-2021 František Milt
 
   Contacts:
     František Milt: frantisek.milt@gmail.com
@@ -1161,6 +1161,7 @@ const
     TSHA2Hash_32 - protected methods
 -------------------------------------------------------------------------------}
 
+{$IFDEF OverflowChecks}{$Q-}{$ENDIF}
 procedure TSHA2Hash_32.ProcessBlock(const Block);
 var
   Hash:         TSHA2Sys_32;
@@ -1172,7 +1173,6 @@ begin
 Hash := fSHA2;
 For i := 0 to 15 do
   Schedule[i] := {$IFNDEF ENDIAN_BIG}EndianSwap{$ENDIF}(BlockWords[i]);
-{$IFDEF OverflowChecks}{$Q-}{$ENDIF}
 For i := 16 to 63 do
   Schedule[i] := UInt32(Schedule[i - 16] + (ROR(Schedule[i - 15],7) xor ROR(Schedule[i - 15],18) xor (Schedule[i - 15] shr 3)) +
                         Schedule[i - 7] + (ROR(Schedule[i - 2],17) xor ROR(Schedule[i - 2],19) xor (Schedule[i - 2] shr 10)));
@@ -1199,8 +1199,8 @@ fSHA2.PartE := UInt32(fSHA2.PartE + Hash.PartE);
 fSHA2.PartF := UInt32(fSHA2.PartF + Hash.PartF);
 fSHA2.PartG := UInt32(fSHA2.PartG + Hash.PartG);
 fSHA2.PartH := UInt32(fSHA2.PartH + Hash.PartH);
-{$IFDEF OverflowChecks}{$Q+}{$ENDIF}
 end;
+{$IFDEF OverflowChecks}{$Q+}{$ENDIF}
 
 //------------------------------------------------------------------------------
 
@@ -1285,6 +1285,7 @@ const
     TSHA2Hash_64 - protected methods
 -------------------------------------------------------------------------------}
 
+{$IFDEF OverflowChecks}{$Q-}{$ENDIF}
 procedure TSHA2Hash_64.ProcessBlock(const Block);
 var
   Hash:         TSHA2Sys_64;
@@ -1296,7 +1297,6 @@ begin
 Hash := fSHA2;
 For i := 0 to 15 do
   Schedule[i] := {$IFNDEF ENDIAN_BIG}EndianSwap{$ENDIF}(BlockWords[i]);
-{$IFDEF OverflowChecks}{$Q-}{$ENDIF}
 For i := 16 to 79 do
   Schedule[i] := UInt64(Schedule[i - 16] + (ROR(Schedule[i - 15],1) xor ROR(Schedule[i - 15],8) xor (Schedule[i - 15] shr 7)) +
                         Schedule[i - 7] + (ROR(Schedule[i - 2],19) xor ROR(Schedule[i - 2],61) xor (Schedule[i - 2] shr 6)));
@@ -1323,8 +1323,8 @@ fSHA2.PartE := UInt64(fSHA2.PartE + Hash.PartE);
 fSHA2.PartF := UInt64(fSHA2.PartF + Hash.PartF);
 fSHA2.PartG := UInt64(fSHA2.PartG + Hash.PartG);
 fSHA2.PartH := UInt64(fSHA2.PartH + Hash.PartH);
-{$IFDEF OverflowChecks}{$Q+}{$ENDIF}
 end;
+{$IFDEF OverflowChecks}{$Q+}{$ENDIF}
 
 //------------------------------------------------------------------------------
 
