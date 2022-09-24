@@ -40,9 +40,9 @@
 
   Version 1.1.3 (2020-07-13)
 
-  Last change 2021-04-12
+  Last change 2022-09-24
 
-  ©2015-2021 František Milt
+  ©2015-2022 František Milt
 
   Contacts:
     František Milt: frantisek.milt@gmail.com
@@ -73,7 +73,8 @@
 unit SHA2;
 
 {$IFDEF FPC}
-  {$MODE Delphi}
+  {$MODE ObjFPC}
+  {$MODESWITCH DuplicateLocals+}
   {$INLINE ON}
   {$DEFINE CanInline}
   {$DEFINE FPC_DisableWarns}
@@ -1050,9 +1051,9 @@ end;
 
 procedure TSHA2Hash.FromString(const Str: String);
 var
-  TempStr:    String;
-  i:          Integer;
-  HashBuffer: TSHA2HashBuffer;
+  TempStr:        String;
+  i:              Integer;
+  TempHashBuffer: TSHA2HashBuffer;
 begin
 If Length(Str) < Integer(HashObservedSize * 2) then
   TempStr := StringOfChar('0',Integer(HashObservedSize * 2) - Length(Str)) + Str
@@ -1060,10 +1061,10 @@ else If Length(Str) > Integer(HashObservedSize * 2) then
   TempStr := Copy(Str,Length(Str) - Pred(Integer(HashObservedSize * 2)),Integer(HashObservedSize * 2))
 else
   TempStr := Str;
-FillChar(Addr(HashBuffer)^,SizeOf(TSHA2HashBuffer),0);
+FillChar(Addr(TempHashBuffer)^,SizeOf(TSHA2HashBuffer),0);
 For i := 0 to Pred(HashObservedSize) do
-  HashBuffer[i] := UInt8(StrToInt('$' + Copy(TempStr,(i * 2) + 1,2)));
-SetHashBuffer(HashBuffer);
+  TempHashBuffer[i] := UInt8(StrToInt('$' + Copy(TempStr,(i * 2) + 1,2)));
+SetHashBuffer(TempHashBuffer);
 end;
 
 //------------------------------------------------------------------------------
